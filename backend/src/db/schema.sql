@@ -1,21 +1,21 @@
-CREATE TABLE IF NOT EXISTS brands (
-  id           SERIAL PRIMARY KEY,
-  name         TEXT NOT NULL UNIQUE,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+DROP TABLE IF EXISTS email_events CASCADE;
+DROP TABLE IF EXISTS creators CASCADE;
+DROP TABLE IF EXISTS campaigns CASCADE;
+DROP TABLE IF EXISTS brands CASCADE;
 
-CREATE TABLE IF NOT EXISTS campaigns (
-  id           SERIAL PRIMARY KEY,
-  brand_id     INTEGER NOT NULL REFERENCES brands(id) ON DELETE CASCADE,
+CREATE TABLE campaigns (
+  id           TEXT PRIMARY KEY,           -- upstream id from campaigns.influence.technology
   name         TEXT NOT NULL,
-  status       TEXT NOT NULL DEFAULT 'active',
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (brand_id, name)
+  brand_name   TEXT NOT NULL,
+  slug         TEXT,
+  data         JSONB,                       -- raw upstream payload, for reference
+  synced_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_campaigns_brand_name ON campaigns(brand_name);
 
-CREATE TABLE IF NOT EXISTS creators (
+CREATE TABLE creators (
   id                 SERIAL PRIMARY KEY,
-  campaign_id        INTEGER NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+  campaign_id        TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
   instagram_url      TEXT NOT NULL,
   instagram_username TEXT,
   first_name         TEXT,
@@ -41,10 +41,10 @@ CREATE TABLE IF NOT EXISTS creators (
 CREATE INDEX IF NOT EXISTS idx_creators_status ON creators(status);
 CREATE INDEX IF NOT EXISTS idx_creators_outreach_sent_at ON creators(outreach_sent_at);
 
-CREATE TABLE IF NOT EXISTS email_events (
+CREATE TABLE email_events (
   id           SERIAL PRIMARY KEY,
   creator_id   INTEGER NOT NULL REFERENCES creators(id) ON DELETE CASCADE,
-  type         TEXT NOT NULL, -- sent_outreach | sent_followup | opened | replied | failed
+  type         TEXT NOT NULL, -- sent_outreach | sent_followup | opened | replied | failed | email_found | no_email
   message_id   TEXT,
   detail       JSONB,
   created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()

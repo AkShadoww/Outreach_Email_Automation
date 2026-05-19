@@ -1,7 +1,6 @@
 const API = '';
 
 const state = {
-  brands: [],
   campaigns: [],
   selectedCampaignId: null,
 };
@@ -21,6 +20,11 @@ async function api(path, options = {}) {
 
 function el(id) { return document.getElementById(id); }
 
+function fmtDate(s) {
+  if (!s) return '';
+  return new Date(s).toLocaleString();
+}
+
 async function refreshAuth() {
   try {
     const s = await api('/auth/status');
@@ -35,36 +39,48 @@ async function refreshAuth() {
   }
 }
 
-async function refreshBrands() {
-  state.brands = await api('/api/brands');
-  const list = el('brand-list');
-  list.innerHTML = '';
-  for (const b of state.brands) {
-    const li = document.createElement('li');
-    li.innerHTML = `<span>${b.name}</span><span class="meta">${b.campaign_count} camp.</span>`;
-    list.appendChild(li);
-  }
-  const select = el('campaign-brand');
-  select.innerHTML = '';
-  for (const b of state.brands) {
-    const opt = document.createElement('option');
-    opt.value = b.id; opt.textContent = b.name;
-    select.appendChild(opt);
-  }
-}
-
 async function refreshCampaigns() {
   state.campaigns = await api('/api/campaigns');
-  const list = el('campaign-list');
-  list.innerHTML = '';
+  const tree = el('brand-tree');
+  tree.innerHTML = '';
+
+  // Group by brand_name preserving the order returned by the API.
+  const groups = new Map();
   for (const c of state.campaigns) {
-    const li = document.createElement('li');
-    if (c.id === state.selectedCampaignId) li.classList.add('active');
-    li.innerHTML = `
-      <span>${c.brand_name} · ${c.name}</span>
-      <span class="meta">${c.creator_count}</span>`;
-    li.onclick = () => selectCampaign(c.id);
-    list.appendChild(li);
+    if (!groups.has(c.brand_name)) groups.set(c.brand_name, []);
+    groups.get(c.brand_name).push(c);
+  }
+
+  if (!groups.size) {
+    tree.innerHTML = '<p class="hint">No campaigns synced yet. Click Refresh.</p>';
+    return;
+  }
+
+  for (const [brand, list] of groups) {
+    const group = document.createElement('div');
+    group.className = 'brand-group';
+    const head = document.createElement('div');
+    head.className = 'brand-name';
+    head.textContent = brand;
+    group.appendChild(head);
+    for (const c of list) {
+      const item = document.createElement('div');
+      item.className = 'campaign-item';
+      if (c.id === state.selectedCampaignId) item.classList.add('active');
+      item.innerHTML = `<span>${c.name}</span><span class="meta">${c.creator_count}</span>`;
+      item.onclick = () => selectCampaign(c.id);
+      group.appendChild(item);
+    }
+    tree.appendChild(group);
+  }
+
+  if (state.campaigns.length) {
+    const latest = state.campaigns
+      .map((c) => c.synced_at)
+      .filter(Boolean)
+      .sort()
+      .pop();
+    if (latest) el('sync-status').textContent = `Synced ${fmtDate(latest)}`;
   }
 }
 
@@ -76,6 +92,8 @@ async function selectCampaign(id) {
   el('campaign-title').textContent = `${c.brand_name} · ${c.name}`;
   el('campaign-stats').innerHTML = `
     <span>Creators: <b>${c.creator_count}</b></span>
+    <span>Pending: <b>${c.pending_extraction_count}</b></span>
+    <span>Email found: <b>${c.email_found_count}</b></span>
     <span>Outreach: <b>${c.outreach_sent_count}</b></span>
     <span>Follow-up: <b>${c.followup_sent_count}</b></span>
     <span>Replied: <b>${c.replied_count}</b></span>
@@ -85,15 +103,9 @@ async function selectCampaign(id) {
   await refreshCreators();
 }
 
-function fmtDate(s) {
-  if (!s) return '';
-  const d = new Date(s);
-  return d.toLocaleString();
-}
-
 async function refreshCreators() {
   if (!state.selectedCampaignId) return;
-  const rows = await api(`/api/creators?campaign_id=${state.selectedCampaignId}`);
+  const rows = await api(`/api/creators?campaign_id=${encodeURIComponent(state.selectedCampaignId)}`);
   const tbody = document.querySelector('#creator-table tbody');
   tbody.innerHTML = '';
   for (const r of rows) {
@@ -141,23 +153,20 @@ async function refreshCreators() {
   }
 }
 
-el('brand-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const name = el('brand-name').value.trim();
-  if (!name) return;
-  await api('/api/brands', { method: 'POST', body: JSON.stringify({ name }) });
-  el('brand-name').value = '';
-  await refreshBrands();
-});
-
-el('campaign-form').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const brand_id = Number(el('campaign-brand').value);
-  const name = el('campaign-name').value.trim();
-  if (!brand_id || !name) return;
-  await api('/api/campaigns', { method: 'POST', body: JSON.stringify({ brand_id, name }) });
-  el('campaign-name').value = '';
-  await refreshCampaigns();
+el('sync-btn').addEventListener('click', async () => {
+  const btn = el('sync-btn');
+  const status = el('sync-status');
+  btn.disabled = true;
+  status.textContent = 'Syncing…';
+  try {
+    const r = await api('/api/campaigns/sync', { method: 'POST' });
+    status.textContent = `Synced ${r.upserted} campaigns`;
+    await refreshCampaigns();
+  } catch (err) {
+    status.textContent = `Sync failed: ${err.message}`;
+  } finally {
+    btn.disabled = false;
+  }
 });
 
 el('creator-form').addEventListener('submit', async (e) => {
@@ -166,17 +175,15 @@ el('creator-form').addEventListener('submit', async (e) => {
   const payload = {
     campaign_id: state.selectedCampaignId,
     instagram_url: el('ig-url').value.trim(),
-    email: el('ig-email').value.trim() || null,
-    first_name: el('ig-first-name').value.trim() || null,
-    full_name: el('ig-full-name').value.trim() || null,
   };
-  await api('/api/creators', { method: 'POST', body: JSON.stringify(payload) });
-  el('ig-url').value = '';
-  el('ig-email').value = '';
-  el('ig-first-name').value = '';
-  el('ig-full-name').value = '';
-  await refreshCreators();
-  await refreshCampaigns();
+  try {
+    await api('/api/creators', { method: 'POST', body: JSON.stringify(payload) });
+    el('ig-url').value = '';
+    await refreshCreators();
+    await refreshCampaigns();
+  } catch (err) {
+    alert(err.message);
+  }
 });
 
 el('refresh-btn').addEventListener('click', refreshCreators);
@@ -206,6 +213,5 @@ el('fetch-emails-btn').addEventListener('click', async () => {
 
 (async () => {
   await refreshAuth();
-  await refreshBrands();
   await refreshCampaigns();
 })();

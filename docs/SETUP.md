@@ -79,19 +79,34 @@ http://localhost:3000/auth/google
 Approve the consent screen. The backend stores the refresh token in Postgres.
 The dashboard top bar will show `Sending as jennifer@useinfluence.xyz`.
 
-## 6. Daily workflow
+## 6. Campaigns sync (campaigns.influence.technology)
 
-1. In the dashboard, add a **brand** and a **campaign**.
-2. Add each creator's Instagram URL one-by-one. Leave email blank.
-3. Click **Fetch emails** at the top of the campaign creator table. The backend
+Brands and campaigns are pulled from the upstream campaigns app, not created
+in the dashboard. In `backend/.env`:
+
+```
+CAMPAIGNS_API_BASE=https://campaigns.influence.technology
+CAMPAIGNS_API_TOKEN=<your x-bot-token>
+```
+
+The backend hits `GET /api/bot/campaigns` on boot and upserts every campaign
+into the local DB. Click **Refresh** in the sidebar to re-sync on demand.
+
+## 7. Daily workflow
+
+1. Open the dashboard. Sidebar shows brands grouped from upstream.
+2. Pick a campaign.
+3. Paste each creator's Instagram URL into the **Add creator's Instagram link**
+   field and submit. Repeat for the whole list.
+4. Click **Fetch emails** at the top of the creators table. The backend
    scrapes every creator with status `pending_extraction` or `no_email`. Rows
    move to `email_found` (with an email filled in) or stay as `no_email`.
-4. Click **Send outreach** on each `email_found` row. The backend sends via the
+5. Click **Send outreach** on each `email_found` row. The backend sends via the
    Gmail API with a tracking pixel. Status → `outreach_sent`.
-5. Leave the backend running. Every 15 minutes the scheduler:
+6. Leave the backend running. Every 15 minutes the scheduler:
    - Checks Gmail threads for replies (→ `replied`).
    - Sends follow-ups for any outreach that's >48h old with no reply (→ `followup_sent`).
-6. The dashboard's **Opens** column updates as the tracking pixel is loaded.
+7. The dashboard's **Opens** column updates as the tracking pixel is loaded.
 
 ## Deployment notes
 
