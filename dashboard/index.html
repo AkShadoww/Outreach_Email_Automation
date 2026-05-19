@@ -15,22 +15,12 @@
   <main class="layout">
     <aside class="sidebar">
       <section>
-        <h3>Brands</h3>
-        <form id="brand-form" class="inline-form">
-          <input type="text" id="brand-name" placeholder="New brand name" required />
-          <button type="submit">Add</button>
-        </form>
-        <ul id="brand-list" class="list"></ul>
-      </section>
-
-      <section>
-        <h3>Campaigns</h3>
-        <form id="campaign-form" class="inline-form">
-          <select id="campaign-brand"></select>
-          <input type="text" id="campaign-name" placeholder="Campaign name" required />
-          <button type="submit">Add</button>
-        </form>
-        <ul id="campaign-list" class="list"></ul>
+        <div class="sidebar-header">
+          <h3>Brands &amp; Campaigns</h3>
+          <button id="sync-btn" class="ghost small">Refresh</button>
+        </div>
+        <p class="hint" id="sync-status">Synced from campaigns.influence.technology</p>
+        <div id="brand-tree" class="tree"></div>
       </section>
     </aside>
 
@@ -41,17 +31,12 @@
       </div>
 
       <form id="creator-form" class="card" hidden>
-        <h3>Add creator</h3>
+        <h3>Add creator's Instagram link</h3>
         <div class="row">
           <input type="url" id="ig-url" placeholder="https://www.instagram.com/username/" required />
-          <input type="email" id="ig-email" placeholder="email (optional)" />
+          <button type="submit">Add creator</button>
         </div>
-        <div class="row">
-          <input type="text" id="ig-first-name" placeholder="First name (optional)" />
-          <input type="text" id="ig-full-name" placeholder="Full name (optional)" />
-        </div>
-        <button type="submit">Add creator</button>
-        <p class="hint">If email is left blank, the Chrome extension will extract it from the Instagram bio.</p>
+        <p class="hint">Click "Fetch emails" after adding, and the system will look up the email automatically.</p>
       </form>
 
       <div id="creator-table-wrap" class="card" hidden>

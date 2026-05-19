@@ -1,57 +1,41 @@
 const express = require('express');
 const db = require('../db');
+const { syncCampaigns } = require('../services/campaignsApi');
 
 const router = express.Router();
 
-router.get('/', async (req, res, next) => {
+router.get('/', async (_req, res, next) => {
   try {
-    const { brand_id } = req.query;
-    const params = [];
-    let where = '';
-    if (brand_id) {
-      params.push(brand_id);
-      where = 'WHERE c.brand_id = $1';
-    }
     const rows = await db.many(
-      `SELECT c.*, b.name AS brand_name,
+      `SELECT c.id, c.name, c.brand_name, c.slug, c.synced_at,
               COUNT(cr.id)::int AS creator_count,
+              COUNT(cr.id) FILTER (WHERE cr.status = 'pending_extraction')::int AS pending_extraction_count,
+              COUNT(cr.id) FILTER (WHERE cr.status = 'email_found')::int AS email_found_count,
               COUNT(cr.id) FILTER (WHERE cr.status = 'outreach_sent')::int AS outreach_sent_count,
               COUNT(cr.id) FILTER (WHERE cr.status = 'followup_sent')::int AS followup_sent_count,
               COUNT(cr.id) FILTER (WHERE cr.status = 'replied')::int AS replied_count
        FROM campaigns c
-       JOIN brands b ON b.id = c.brand_id
        LEFT JOIN creators cr ON cr.campaign_id = c.id
-       ${where}
-       GROUP BY c.id, b.name
-       ORDER BY c.created_at DESC`,
-      params,
+       GROUP BY c.id
+       ORDER BY c.brand_name ASC, c.name ASC`,
     );
     res.json(rows);
   } catch (err) { next(err); }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/sync', async (_req, res) => {
   try {
-    const { brand_id, name } = req.body || {};
-    if (!brand_id || !name) {
-      return res.status(400).json({ error: 'brand_id and name are required' });
-    }
-    const row = await db.one(
-      `INSERT INTO campaigns (brand_id, name) VALUES ($1, $2) RETURNING *`,
-      [brand_id, name.trim()],
-    );
-    res.status(201).json(row);
-  } catch (err) { next(err); }
+    const result = await syncCampaigns();
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('campaigns sync failed:', err);
+    res.status(502).json({ ok: false, error: err.message });
+  }
 });
 
 router.get('/:id', async (req, res, next) => {
   try {
-    const row = await db.one(
-      `SELECT c.*, b.name AS brand_name
-       FROM campaigns c JOIN brands b ON b.id = c.brand_id
-       WHERE c.id = $1`,
-      [req.params.id],
-    );
+    const row = await db.one(`SELECT * FROM campaigns WHERE id = $1`, [req.params.id]);
     if (!row) return res.status(404).json({ error: 'not found' });
     res.json(row);
   } catch (err) { next(err); }

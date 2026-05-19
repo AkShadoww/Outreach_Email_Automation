@@ -22,16 +22,20 @@ docs/         Setup walkthrough (Gmail OAuth, Postgres, IG session)
 
 ## Data model
 
-- **brands** → high-level brand accounts
-- **campaigns** → each brand has many campaigns
-- **creators** → IG URL, extracted email, status, message + thread IDs, open count
+- **campaigns** → synced from `campaigns.influence.technology` (`GET /api/bot/campaigns`).
+  Upstream `id` is the primary key. `brand_name` is denormalised onto each row.
+  The local UI never creates campaigns - it's read-only on this table.
+- **creators** → IG URL, extracted email, status, message + thread IDs, open count.
+  Linked to a campaign by upstream campaign id.
 - **email_events** → audit log of sent / opened / replied / failed events
 - **oauth_tokens** → Jennifer's Gmail refresh token (one-time consent)
 
 ## Email flow
 
 ```
-add IG URL → status: pending_extraction
+backend boot → fetch /api/bot/campaigns → upsert into local campaigns table
+                                                  ↓
+admin picks a campaign → adds creator IG URL → status: pending_extraction
   ↓ user clicks "Fetch emails" once per campaign
   ↓ backend hits IG's web_profile_info endpoint, then HTML fallback
   ↓ status: email_found  (or no_email if nothing was scrapable)

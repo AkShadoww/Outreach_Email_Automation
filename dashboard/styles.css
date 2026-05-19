@@ -24,22 +24,22 @@ body {
   overflow-y: auto;
 }
 .sidebar section { margin-bottom: 28px; }
-.sidebar h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
-.inline-form { display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap; }
-.inline-form input, .inline-form select {
-  flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px;
+.sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.sidebar h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #6b7280; }
+.tree { margin-top: 8px; }
+.tree .brand-group { margin-bottom: 14px; }
+.tree .brand-name {
+  font-size: 11px; text-transform: uppercase; letter-spacing: .04em;
+  color: #9ca3af; padding: 4px 6px; font-weight: 600;
 }
-.inline-form button {
-  padding: 6px 10px; border: 0; background: #2563eb; color: #fff; border-radius: 6px; cursor: pointer;
-}
-.list { list-style: none; padding: 0; margin: 0; }
-.list li {
-  padding: 8px 10px; border-radius: 6px; cursor: pointer; font-size: 14px;
+.tree .campaign-item {
+  padding: 7px 10px; border-radius: 6px; cursor: pointer; font-size: 14px;
   display: flex; justify-content: space-between; gap: 8px;
 }
-.list li:hover { background: #f3f4f6; }
-.list li.active { background: #dbeafe; color: #1d4ed8; font-weight: 600; }
-.list .meta { font-size: 11px; color: #6b7280; }
+.tree .campaign-item:hover { background: #f3f4f6; }
+.tree .campaign-item.active { background: #dbeafe; color: #1d4ed8; font-weight: 600; }
+.tree .meta { font-size: 11px; color: #6b7280; }
+button.small { padding: 4px 8px; font-size: 12px; }
 
 .main { padding: 24px; overflow: auto; }
 .main-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 16px; }
