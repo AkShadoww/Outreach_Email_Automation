@@ -98,56 +98,6 @@ router.patch('/:id', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/:id/fetch-email', async (req, res) => {
-  try {
-    const creator = await db.one(`SELECT * FROM creators WHERE id = $1`, [req.params.id]);
-    if (!creator) return res.status(404).json({ error: 'not found' });
-
-    const scraped = await scrapeProfile({
-      instagramUrl: creator.instagram_url,
-      instagramUsername: creator.instagram_username,
-    });
-
-    const updates = [
-      `instagram_username = COALESCE(creators.instagram_username, $2)`,
-      `full_name = COALESCE($3, full_name)`,
-      `first_name = COALESCE($4, first_name)`,
-      `updated_at = NOW()`,
-    ];
-    const params = [creator.id, scraped.username, scraped.fullName, scraped.firstName];
-
-    if (scraped.email) {
-      params.push(scraped.email);
-      updates.push(`email = $${params.length}`);
-      updates.push(
-        `status = CASE WHEN status IN ('pending_extraction','no_email') THEN 'email_found' ELSE status END`,
-      );
-    } else if (creator.status === 'pending_extraction') {
-      updates.push(`status = 'no_email'`);
-    }
-
-    const updated = await db.one(
-      `UPDATE creators SET ${updates.join(', ')} WHERE id = $1 RETURNING *`,
-      params,
-    );
-
-    await db.query(
-      `INSERT INTO email_events (creator_id, type, detail)
-       VALUES ($1, $2, $3)`,
-      [
-        creator.id,
-        scraped.email ? 'email_found' : 'no_email',
-        { source: scraped.source, isBusiness: scraped.isBusiness },
-      ],
-    );
-
-    res.json({ ok: true, creator: updated, source: scraped.source });
-  } catch (err) {
-    console.error('fetch-email failed:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 router.post('/bulk/fetch-email', async (req, res) => {
   try {
     const { campaign_id } = req.body || {};
@@ -197,6 +147,56 @@ router.post('/bulk/fetch-email', async (req, res) => {
     res.json({ ok: true, processed: results.length, results });
   } catch (err) {
     console.error('bulk fetch-email failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/:id/fetch-email', async (req, res) => {
+  try {
+    const creator = await db.one(`SELECT * FROM creators WHERE id = $1`, [req.params.id]);
+    if (!creator) return res.status(404).json({ error: 'not found' });
+
+    const scraped = await scrapeProfile({
+      instagramUrl: creator.instagram_url,
+      instagramUsername: creator.instagram_username,
+    });
+
+    const updates = [
+      `instagram_username = COALESCE(creators.instagram_username, $2)`,
+      `full_name = COALESCE($3, full_name)`,
+      `first_name = COALESCE($4, first_name)`,
+      `updated_at = NOW()`,
+    ];
+    const params = [creator.id, scraped.username, scraped.fullName, scraped.firstName];
+
+    if (scraped.email) {
+      params.push(scraped.email);
+      updates.push(`email = $${params.length}`);
+      updates.push(
+        `status = CASE WHEN status IN ('pending_extraction','no_email') THEN 'email_found' ELSE status END`,
+      );
+    } else if (creator.status === 'pending_extraction') {
+      updates.push(`status = 'no_email'`);
+    }
+
+    const updated = await db.one(
+      `UPDATE creators SET ${updates.join(', ')} WHERE id = $1 RETURNING *`,
+      params,
+    );
+
+    await db.query(
+      `INSERT INTO email_events (creator_id, type, detail)
+       VALUES ($1, $2, $3)`,
+      [
+        creator.id,
+        scraped.email ? 'email_found' : 'no_email',
+        { source: scraped.source, isBusiness: scraped.isBusiness },
+      ],
+    );
+
+    res.json({ ok: true, creator: updated, source: scraped.source });
+  } catch (err) {
+    console.error('fetch-email failed:', err);
     res.status(500).json({ error: err.message });
   }
 });
