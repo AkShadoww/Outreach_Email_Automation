@@ -113,7 +113,7 @@ async function refreshCreators() {
     const lastActivity = r.replied_at || r.followup_sent_at || r.outreach_sent_at || r.updated_at;
     tr.innerHTML = `
       <td><a href="${r.instagram_url}" target="_blank" rel="noopener">@${r.instagram_username || r.instagram_url}</a></td>
-      <td class="name-cell">${r.full_name ? r.full_name : '<span class="meta">—</span>'}</td>
+      <td>${r.first_name || ''} ${r.full_name && r.full_name !== r.first_name ? `<br/><span class="meta">${r.full_name}</span>` : ''}</td>
       <td>${r.email || '<span class="meta">—</span>'}</td>
       <td><span class="tag ${r.status}">${r.status.replace(/_/g, ' ')}</span></td>
       <td>${r.open_count}${r.last_open_at ? `<br/><span class="meta">${fmtDate(r.last_open_at)}</span>` : ''}</td>
@@ -197,24 +197,45 @@ el('sync-btn').addEventListener('click', async () => {
 el('creator-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   if (!state.selectedCampaignId) return;
-  const fullName = el('ig-fullname').value.trim();
-  const payload = {
-    campaign_id: state.selectedCampaignId,
-    instagram_url: el('ig-url').value.trim(),
-  };
-  if (fullName) {
-    payload.full_name = fullName;
-    payload.first_name = fullName.split(/\s+/)[0];
+  const raw = el('ig-urls').value;
+  const urls = Array.from(
+    new Set(
+      raw
+        .split(/[\s,]+/)
+        .map((s) => s.trim())
+        .filter((s) => /instagram\.com/i.test(s)),
+    ),
+  );
+  if (!urls.length) {
+    alert('Paste at least one Instagram URL.');
+    return;
   }
-  try {
-    await api('/api/creators', { method: 'POST', body: JSON.stringify(payload) });
-    el('ig-url').value = '';
-    el('ig-fullname').value = '';
-    await refreshCreators();
-    await refreshCampaigns();
-  } catch (err) {
-    alert(err.message);
+  const status = el('add-status');
+  const submitBtn = e.target.querySelector('button[type="submit"]');
+  submitBtn.disabled = true;
+  let added = 0;
+  let failed = 0;
+  for (let i = 0; i < urls.length; i++) {
+    status.textContent = `Adding ${i + 1}/${urls.length}…`;
+    try {
+      await api('/api/creators', {
+        method: 'POST',
+        body: JSON.stringify({
+          campaign_id: state.selectedCampaignId,
+          instagram_url: urls[i],
+        }),
+      });
+      added += 1;
+    } catch (err) {
+      failed += 1;
+      console.warn(`Failed to add ${urls[i]}: ${err.message}`);
+    }
   }
+  status.textContent = `Added ${added} creator(s)${failed ? `, ${failed} failed` : ''}.`;
+  if (!failed) el('ig-urls').value = '';
+  submitBtn.disabled = false;
+  await refreshCreators();
+  await refreshCampaigns();
 });
 
 el('refresh-btn').addEventListener('click', refreshCreators);
