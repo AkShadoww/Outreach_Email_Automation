@@ -34,7 +34,8 @@
         "http://localhost:*/*",
         "http://127.0.0.1/*",
         "http://127.0.0.1:*/*",
-        "https://*.influence.technology/*"
+        "https://*.influence.technology/*",
+        "https://*.up.railway.app/*"
       ],
       "js": ["dashboard-bridge.js"],
       "run_at": "document_idle"
