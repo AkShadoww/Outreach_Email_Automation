@@ -102,8 +102,29 @@ th { background: #f9fafb; font-weight: 600; color: #4b5563; }
 .seq-step-row input.seq-step-label { flex: 1; }
 
 /* Per-campaign template editor */
-.template-block { margin: 10px 0; padding: 10px; border: 1px solid #e5e7eb; border-radius: 6px; background: #fafafa; }
-.template-block h4 { margin: 0 0 6px; font-size: 13px; color: #374151; }
-.template-block label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #4b5563; margin-top: 6px; }
+.template-block { margin: 10px 0; border: 1px solid #e5e7eb; border-radius: 6px; background: #fafafa; }
+.template-block > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+.template-block > summary::-webkit-details-marker { display: none; }
+.template-block > summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 6px;
+  color: #6b7280;
+  transition: transform 0.15s;
+}
+.template-block[open] > summary::before { transform: rotate(90deg); }
+.template-block-title { font-weight: 600; font-size: 13px; color: #374151; flex: 1; }
+.template-block-badge { font-size: 11px; color: #6b7280; background: #f3f4f6; padding: 2px 6px; border-radius: 10px; }
+.template-block-body { padding: 0 12px 12px; border-top: 1px solid #e5e7eb; }
+.template-block label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: #4b5563; margin-top: 8px; }
 .template-block input, .template-block textarea { padding: 6px 8px; font-size: 13px; border: 1px solid #d1d5db; border-radius: 4px; font-family: inherit; }
 .template-block textarea { resize: vertical; }

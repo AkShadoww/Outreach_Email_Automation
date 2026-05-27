@@ -671,22 +671,28 @@ function escapeHtml(s) {
 // default so the user can see and tweak the real copy that's being sent.
 // Clearing the field and saving falls back to the global default.
 function buildTemplateEditor(key, label, tpl, defaults) {
-  const card = document.createElement('div');
+  const card = document.createElement('details');
   card.className = 'template-block';
   card.dataset.key = key;
+  const hasOverride = (tpl.subject && tpl.subject !== '') || (tpl.body && tpl.body !== '');
   const subject = tpl.subject != null && tpl.subject !== ''
     ? tpl.subject : (defaults && defaults.subject) || '';
   const body = tpl.body != null && tpl.body !== ''
     ? tpl.body : (defaults && defaults.body) || '';
   card.innerHTML = `
-    <h4>${escapeHtml(label)}</h4>
-    <label>Subject
-      <input type="text" class="tpl-subject" value="${escapeHtml(subject)}" />
-    </label>
-    <label>Body
-      <textarea class="tpl-body" rows="10">${escapeHtml(body)}</textarea>
-    </label>
-    <p class="hint" style="margin: 4px 0 0;">Clear and save to revert to the global default.</p>
+    <summary>
+      <span class="template-block-title">${escapeHtml(label)}</span>
+      <span class="template-block-badge">${hasOverride ? 'customized' : 'using default'}</span>
+    </summary>
+    <div class="template-block-body">
+      <label>Subject
+        <input type="text" class="tpl-subject" value="${escapeHtml(subject)}" />
+      </label>
+      <label>Body
+        <textarea class="tpl-body" rows="10">${escapeHtml(body)}</textarea>
+      </label>
+      <p class="hint" style="margin: 4px 0 0;">Clear and save to revert to the global default.</p>
+    </div>
   `;
   return card;
 }
@@ -722,12 +728,18 @@ el('templates-save-btn').addEventListener('click', async () => {
     if (!templates.outreach) delete templates.outreach;
     if (!templates.followups.length) delete templates.followups;
 
-    await api(`/api/campaigns/${encodeURIComponent(state.selectedCampaignId)}`, {
+    const updated = await api(`/api/campaigns/${encodeURIComponent(state.selectedCampaignId)}`, {
       method: 'PATCH',
       body: JSON.stringify({ sequence_id, templates }),
     });
     status.textContent = 'Saved.';
     await refreshCampaigns();
+    const c = state.campaigns.find((x) => x.id === state.selectedCampaignId);
+    if (c) {
+      // Merge any fields the list query doesn't surface (e.g. fresh templates).
+      if (updated) { c.templates = updated.templates; c.sequence_id = updated.sequence_id; }
+      renderTemplatesCard(c);
+    }
   } catch (err) {
     status.textContent = `Failed: ${err.message}`;
   } finally {
