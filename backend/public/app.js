@@ -630,7 +630,10 @@ function buildTemplateBlock(template) {
   }
 
   body.innerHTML = `
-    <p class="hint">Placeholders: <code>{firstName}</code>, <code>{brandName}</code>, <code>{campaignName}</code>.</p>
+    <p class="hint">
+      Placeholders: <code>{firstName}</code>, <code>{brandName}</code>, <code>{campaignName}</code>.
+      Formatting: <code>[click here](https://example.com)</code> for links, <code>{{grey}}text{{/grey}}</code> for grey.
+    </p>
     <div class="row" style="gap: 12px; flex-wrap: wrap;">
       <label style="flex: 1; min-width: 200px;">Template name
         <input type="text" class="tpl-name" value="${escapeHtml(draft.name)}" placeholder="e.g. Standard outreach" />

@@ -1,26 +1,17 @@
 const crypto = require('crypto');
 const { google } = require('googleapis');
 const { getAuthorizedClient } = require('./oauth');
+const { renderRichBody } = require('./richBody');
 
 function newTrackingId() {
   return crypto.randomBytes(12).toString('hex');
 }
 
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function bodyToHtml(text, trackingPixelUrl) {
-  const escaped = escapeHtml(text).replace(/\n/g, '<br/>');
+function wrapHtml(innerHtml, trackingPixelUrl) {
   const pixel = trackingPixelUrl
     ? `<img src="${trackingPixelUrl}" width="1" height="1" alt="" style="display:block;border:0;outline:none;" />`
     : '';
-  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#222;">${escaped}${pixel}</div>`;
+  return `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.5;color:#222;">${innerHtml}${pixel}</div>`;
 }
 
 function buildRawMime({ from, to, subject, htmlBody, textBody, inReplyTo, references }) {
@@ -70,14 +61,14 @@ async function sendEmail({ to, subject, body, threadId, inReplyTo, references, t
 
   const baseUrl = (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '');
   const pixelUrl = trackingId ? `${baseUrl}/track/open/${trackingId}.png` : null;
-  const htmlBody = bodyToHtml(body, pixelUrl);
+  const rendered = renderRichBody(body);
 
   const raw = buildRawMime({
     from,
     to,
     subject,
-    htmlBody,
-    textBody: body,
+    htmlBody: wrapHtml(rendered.html, pixelUrl),
+    textBody: rendered.text,
     inReplyTo,
     references,
   });
