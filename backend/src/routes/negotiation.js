@@ -31,13 +31,13 @@ function authenticate(req, res) {
  *   suggested_offers  array    — 6 SuggestedOffer objects
  *   creator_email?    string
  *   creator_name?     string
- *   quoted_rate?      number
+ *   quoted_rate?      number   — creator's stated rate (optional)
  */
 router.post('/push', async (req, res, next) => {
   try {
     if (!authenticate(req, res)) return;
 
-    const { instagram_handle, ig_scraped_data, suggested_offers } = req.body || {};
+    const { instagram_handle, ig_scraped_data, suggested_offers, quoted_rate } = req.body || {};
 
     if (!instagram_handle) {
       return res.status(400).json({ error: 'instagram_handle is required' });
@@ -62,15 +62,24 @@ router.post('/push', async (req, res, next) => {
       });
     }
 
+    // Normalise quoted_rate: must be a positive finite number or null.
+    const parsedRate = (quoted_rate != null && quoted_rate !== '')
+      ? Number(quoted_rate)
+      : null;
+    const safeRate = (parsedRate != null && Number.isFinite(parsedRate) && parsedRate >= 0)
+      ? parsedRate
+      : null;
+
     const updatedIds = [];
     for (const row of rows) {
       await db.query(
         `UPDATE creators
          SET ig_scraped_data  = $2,
              suggested_offers = $3,
+             quoted_rate      = COALESCE($4, quoted_rate),
              updated_at       = NOW()
          WHERE id = $1`,
-        [row.id, JSON.stringify(ig_scraped_data), JSON.stringify(suggested_offers)],
+        [row.id, JSON.stringify(ig_scraped_data), JSON.stringify(suggested_offers), safeRate],
       );
       updatedIds.push(row.id);
     }
