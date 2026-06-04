@@ -88,7 +88,6 @@ async function refreshCampaigns() {
 function showView(name) {
   el('campaign-view').hidden = name !== 'campaign';
   el('templates-view').hidden = name !== 'templates';
-  el('negotiation-view').hidden = name !== 'negotiation';
   closeSidebarOnMobile();
 }
 
@@ -271,6 +270,9 @@ async function refreshCreators() {
     actions.appendChild(del);
     tbody.appendChild(tr);
   }
+
+  // Negotiation & pricing for this campaign, rendered right on the campaign page.
+  renderCampaignNegotiation(rows);
 }
 
 el('sync-btn').addEventListener('click', async () => {
@@ -811,108 +813,56 @@ el('campaign-template-open-btn').addEventListener('click', () => {
   showView('templates');
 });
 
-// --- Creator Negotiation -------------------------------------------------
+// --- Per-campaign negotiation & pricing (rendered on the campaign page) ---
 
-el('open-negotiation-btn').addEventListener('click', () => {
-  showView('negotiation');
-  loadNegotiationView();
-});
+function renderCampaignNegotiation(rows) {
+  const card = el('campaign-negotiation-card');
+  const body = el('campaign-negotiation-body');
+  if (!card || !body) return;
 
-async function loadNegotiationView() {
-  const root = el('negotiation-campaigns-list');
-  root.innerHTML = '<p class="hint">Loading…</p>';
+  const campaign = state.campaigns.find((c) => c.id === state.selectedCampaignId);
+  if (!campaign) { card.hidden = true; return; }
+  card.hidden = false;
 
-  try {
-    // Fetch creators for all campaigns in parallel.
-    const results = await Promise.all(
-      state.campaigns.map(async (campaign) => {
-        try {
-          const creators = await api(`/api/creators?campaign_id=${encodeURIComponent(campaign.id)}`);
-          // Only include creators that have negotiation-relevant data.
-          const relevant = creators.filter(
-            (c) => c.suggested_offers != null || c.ig_scraped_data != null,
-          );
-          return { campaign, creators: relevant };
-        } catch (_err) {
-          return { campaign, creators: [] };
-        }
-      }),
-    );
-    renderNegotiationCampaigns(results);
-  } catch (err) {
-    root.innerHTML = `<p class="hint">Failed to load: ${escapeHtml(err.message)}</p>`;
-  }
-}
+  // Creators whose negotiation has started: scraped data, offers, or a quoted rate.
+  let creators = (rows || []).filter(
+    (c) => c.suggested_offers != null || c.ig_scraped_data != null || c.quoted_rate != null,
+  );
 
-function renderNegotiationCampaigns(results) {
-  const root = el('negotiation-campaigns-list');
-  root.innerHTML = '';
-
-  const hasAny = results.some((r) => r.creators.length > 0);
-  if (!hasAny) {
-    root.innerHTML = `
-      <div class="card">
-        <p class="hint" style="margin:0;">No creator negotiation data yet. Data appears here once creators share their rates via the influence-negotiation backend (<code>POST /api/negotiation/push</code>).</p>
-      </div>`;
-    return;
-  }
-
-  for (const { campaign, creators } of results) {
-    // Show all campaigns that have at least one relevant creator, plus any
-    // that have max_cpm set (so admin can configure them even before push data).
-    if (!creators.length && campaign.max_cpm == null) continue;
-    root.appendChild(buildNegCampaignBlock(campaign, creators));
-  }
-}
-
-function buildNegCampaignBlock(campaign, creators) {
-  const block = document.createElement('details');
-  block.className = 'neg-campaign-block';
-  if (creators.length > 0) block.setAttribute('open', '');
-
-  const creatorWord = creators.length === 1 ? 'creator' : 'creators';
-  block.innerHTML = `
-    <summary>
-      <span class="neg-campaign-title">${escapeHtml(campaign.brand_name)} · ${escapeHtml(campaign.name)}</span>
-      <span class="neg-campaign-meta">${creators.length} ${creatorWord} with data</span>
-    </summary>
-    <div class="neg-campaign-body">
-      <div class="neg-cpm-row">
-        <label class="neg-cpm-label" for="neg-cpm-${escapeHtml(campaign.id)}">Max CPM ($)</label>
-        <input
-          id="neg-cpm-${escapeHtml(campaign.id)}"
-          class="neg-cpm-input"
-          type="number"
-          min="0"
-          step="0.01"
-          placeholder="e.g. 25"
-          value="${campaign.max_cpm != null ? escapeHtml(String(campaign.max_cpm)) : ''}"
-        />
-        <button type="button" class="neg-recalc-btn small">Save &amp; Recalculate Offers</button>
-        <span class="neg-cpm-status hint"></span>
-      </div>
-      <div class="neg-creators-list"></div>
+  body.innerHTML = `
+    <div class="neg-cpm-row">
+      <label class="neg-cpm-label" for="campaign-neg-cpm">Max CPM ($)</label>
+      <input id="campaign-neg-cpm" class="neg-cpm-input" type="number" min="0" step="0.01"
+             placeholder="e.g. 25"
+             value="${campaign.max_cpm != null ? escapeHtml(String(campaign.max_cpm)) : ''}" />
+      <button type="button" class="neg-recalc-btn small">Save &amp; Recalculate Offers</button>
+      <span class="neg-cpm-status hint"></span>
     </div>
+    <div class="neg-creators-list"></div>
   `;
 
-  const creatorsList = block.querySelector('.neg-creators-list');
-  const cpmInput = block.querySelector('.neg-cpm-input');
-  const recalcBtn = block.querySelector('.neg-recalc-btn');
-  const cpmStatus = block.querySelector('.neg-cpm-status');
+  const creatorsList = body.querySelector('.neg-creators-list');
+  const cpmInput = body.querySelector('.neg-cpm-input');
+  const recalcBtn = body.querySelector('.neg-recalc-btn');
+  const cpmStatus = body.querySelector('.neg-cpm-status');
 
-  // Render creator blocks.
   function renderCreators(list) {
     creatorsList.innerHTML = '';
+    if (!list.length) {
+      creatorsList.innerHTML =
+        '<p class="hint" style="margin:0;">No creators have shared their rates yet. ' +
+        'Stats and offers appear here once a creator replies with a rate and the negotiation worker scrapes their Instagram.</p>';
+      return;
+    }
     for (const creator of list) {
       creatorsList.appendChild(buildNegCreatorBlock(creator, refreshCreatorBlock));
     }
   }
 
-  // Re-fetch and re-render a single creator block after offer selection.
+  // Re-fetch and re-render a single creator block after select / edit / approve.
   async function refreshCreatorBlock(creatorId) {
     try {
       const updated = await api(`/api/creators/${creatorId}/offers`);
-      // Merge updated offers/selection back into creators array.
       const idx = creators.findIndex((c) => c.id === creatorId);
       if (idx !== -1) {
         creators[idx] = { ...creators[idx], ...updated };
@@ -942,19 +892,17 @@ function buildNegCampaignBlock(campaign, creators) {
       });
       campaign.max_cpm = maxCpm;
 
-      // 2. Trigger offer recalculation for all creators in this campaign.
+      // 2. Recalculate offers for every creator in this campaign.
       cpmStatus.textContent = 'Recalculating offers…';
       const result = await api(`/api/campaigns/${encodeURIComponent(campaign.id)}/recalculate-offers`, {
         method: 'POST',
       });
 
-      // 3. Re-fetch updated creators.
-      const freshCreators = await api(`/api/creators?campaign_id=${encodeURIComponent(campaign.id)}`);
-      const relevant = freshCreators.filter(
-        (c) => c.suggested_offers != null || c.ig_scraped_data != null,
+      // 3. Re-fetch and re-render.
+      const fresh = await api(`/api/creators?campaign_id=${encodeURIComponent(campaign.id)}`);
+      creators = fresh.filter(
+        (c) => c.suggested_offers != null || c.ig_scraped_data != null || c.quoted_rate != null,
       );
-      creators.length = 0;
-      relevant.forEach((c) => creators.push(c));
       renderCreators(creators);
 
       cpmStatus.textContent = `Done — ${result.updated} creator${result.updated === 1 ? '' : 's'} updated.`;
@@ -964,8 +912,6 @@ function buildNegCampaignBlock(campaign, creators) {
       recalcBtn.disabled = false;
     }
   });
-
-  return block;
 }
 
 function buildNegCreatorBlock(creator, onOfferSelected) {

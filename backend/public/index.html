@@ -35,13 +35,6 @@
           <span class="meta">&rarr;</span>
         </button>
       </section>
-
-      <section class="sidebar-section">
-        <button id="open-negotiation-btn" class="sidebar-nav-link" type="button">
-          <span>Creator Negotiation</span>
-          <span class="meta">&rarr;</span>
-        </button>
-      </section>
     </aside>
 
     <section class="main">
@@ -101,6 +94,14 @@
             </table>
           </div>
         </div>
+
+        <div id="campaign-negotiation-card" class="card" hidden>
+          <div class="card-header">
+            <h3>Negotiation &amp; Pricing</h3>
+          </div>
+          <p class="hint" style="margin:0 0 10px;">Set this campaign's max CPM, then review each creator's Instagram stats and AI-suggested offers, and approve one to send.</p>
+          <div id="campaign-negotiation-body"></div>
+        </div>
       </div>
 
       <div id="templates-view" hidden>
@@ -118,14 +119,6 @@
           </div>
           <div id="templates-list"></div>
         </div>
-      </div>
-
-      <div id="negotiation-view" hidden>
-        <div class="main-header">
-          <h2>Creator Negotiation</h2>
-          <p class="hint" style="margin:0;">Campaigns where creators have shared their rates. Set max CPM per campaign and pick from 6 AI-suggested offers.</p>
-        </div>
-        <div id="negotiation-campaigns-list"></div>
       </div>
     </section>
   </main>
