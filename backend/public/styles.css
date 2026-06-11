@@ -447,6 +447,53 @@ tr.thread-row > td { background: #f9fafb; padding: 0; }
 .thread-subj { font-size: 12px; font-weight: 600; color: #374151; margin-bottom: 4px; }
 .thread-body { font-size: 13px; color: #1f2937; white-space: pre-wrap; word-break: break-word; }
 
+/* --- Email Threads window (list + reading pane) -------------------------- */
+.threads-layout { display: grid; grid-template-columns: 300px 1fr; padding: 0; overflow: hidden; }
+.threads-list-pane {
+  border-right: 1px solid #e5e7eb;
+  padding: 12px;
+  max-height: 72vh;
+  overflow-y: auto;
+}
+#threads-search { width: 100%; box-sizing: border-box; margin-bottom: 10px; }
+.thread-list-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  color: inherit;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 9px 11px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+.thread-list-item:hover { background: #f9fafb; }
+.thread-list-item.active { background: #dbeafe; border-color: #93c5fd; }
+.thread-list-main { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 3px; }
+.thread-list-name { font-weight: 600; font-size: 14px; color: #111827; }
+.thread-list-item .meta { font-size: 11px; }
+
+.threads-detail-pane { display: flex; flex-direction: column; min-width: 0; max-height: 72vh; }
+.threads-detail-head { padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
+.threads-detail-head a { font-weight: 600; }
+.thread-detail-name { margin-left: 8px; color: #6b7280; }
+/* Same bubble layout as the inline thread dropdown. */
+.threads-detail {
+  padding: 14px 16px;
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+@media (max-width: 720px) {
+  .threads-layout { grid-template-columns: 1fr; }
+  .threads-list-pane { max-height: 38vh; border-right: 0; border-bottom: 1px solid #e5e7eb; }
+  .threads-detail-pane { max-height: none; }
+}
+
 /* Count badge on the Delegate button */
 .count-badge {
   display: inline-block;
