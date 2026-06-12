@@ -225,7 +225,14 @@ async function runScrapeQueue(payload, sender) {
         // so we still scrape username + email + views in one pass.
         const url = baseUrl.replace(/\/+$/, '') + '/reels/';
 
-        const tab = await chrome.tabs.create({ url, active: false });
+        // Open it FOREGROUND (active). Instagram's reels grid lazy-loads on
+        // scroll via IntersectionObserver, and Chrome throttles hidden/occluded
+        // tabs — so a background tab often never populates the grid, yielding 0
+        // views. A visible tab renders and scrolls reliably (matches what you
+        // see opening the profile yourself). The tab is closed right after.
+        // Note: keep this scrape tab focused while it runs — switching away
+        // re-occludes it and re-throttles the page.
+        const tab = await chrome.tabs.create({ url, active: true });
         tabId = tab.id;
         await waitForTabComplete(tabId, 30000);
         // Settle: let document_idle + IG SPA hydration finish.
