@@ -90,7 +90,6 @@ function showView(name) {
   el('templates-view').hidden = name !== 'templates';
   el('guidelines-view').hidden = name !== 'guidelines';
   el('delegate-view').hidden = name !== 'delegate';
-  el('threads-view').hidden = name !== 'threads';
   closeSidebarOnMobile();
 }
 
@@ -1334,120 +1333,6 @@ function buildDelegateCard(r) {
     };
   }
   return card;
-}
-
-// --- Email Threads window (per campaign) ---------------------------------
-// A dedicated reading view: a list of creators we've emailed (left), each
-// distinguished by name, and the selected creator's full conversation (right).
-// Reuses GET /api/creators/:id/thread and renderThreadInto.
-let threadsCreators = [];
-let threadsSelectedId = null;
-
-function threadDisplayName(r) {
-  return r.full_name || r.first_name || r.instagram_username || `Creator ${r.id}`;
-}
-
-function threadLastActivity(r) {
-  return r.replied_at || r.followup_sent_at || r.outreach_sent_at || r.updated_at;
-}
-
-// A creator has a conversation worth reading once we've started an email thread
-// with them — by any signal: outreach sent, a Gmail thread id, a follow-up, or
-// a reply. (outreach_sent_at alone is too strict for imported/edge rows.)
-function threadHasConversation(r) {
-  return !!(r.outreach_sent_at || r.outreach_thread_id || r.followup_sent_at || r.replied_at);
-}
-
-el('open-threads-btn').addEventListener('click', async () => {
-  if (!state.selectedCampaignId) return;
-  showView('threads');
-  const c = state.campaigns.find((x) => x.id === state.selectedCampaignId);
-  el('threads-title').textContent = c ? `Email Threads · ${c.brand_name} · ${c.name}` : 'Email Threads';
-  await renderThreadsList();
-});
-
-el('threads-back-btn').addEventListener('click', () => showView('campaign'));
-el('threads-search').addEventListener('input', renderThreadsItems);
-
-async function renderThreadsList() {
-  const listRoot = el('threads-list');
-  listRoot.innerHTML = '<p class="hint">Loading…</p>';
-  threadsSelectedId = null;
-  el('threads-detail-head').hidden = true;
-  el('threads-detail').innerHTML = '<p class="hint" style="margin:0;">Select a creator to view the conversation.</p>';
-  el('threads-search').value = '';
-  let rows;
-  try {
-    rows = await api(`/api/creators?campaign_id=${encodeURIComponent(state.selectedCampaignId)}`);
-  } catch (err) {
-    listRoot.innerHTML = `<p class="hint">Failed to load: ${escapeHtml(err.message)}</p>`;
-    return;
-  }
-  // Only creators we've actually emailed have a conversation; newest first.
-  threadsCreators = rows
-    .filter(threadHasConversation)
-    .sort((a, b) => new Date(threadLastActivity(b)) - new Date(threadLastActivity(a)));
-  renderThreadsItems();
-  if (threadsCreators.length) selectThread(threadsCreators[0].id);
-}
-
-function renderThreadsItems() {
-  const listRoot = el('threads-list');
-  if (!threadsCreators.length) {
-    listRoot.innerHTML = '<p class="hint">No email threads yet. Send outreach to start a conversation.</p>';
-    return;
-  }
-  const q = el('threads-search').value.trim().toLowerCase();
-  const items = q
-    ? threadsCreators.filter((r) =>
-        [r.full_name, r.first_name, r.instagram_username, r.email]
-          .filter(Boolean)
-          .some((s) => String(s).toLowerCase().includes(q)),
-      )
-    : threadsCreators;
-  if (!items.length) {
-    listRoot.innerHTML = '<p class="hint">No creators match your search.</p>';
-    return;
-  }
-  listRoot.innerHTML = '';
-  for (const r of items) {
-    const item = document.createElement('button');
-    item.type = 'button';
-    item.className = 'thread-list-item' + (r.id === threadsSelectedId ? ' active' : '');
-    item.innerHTML = `
-      <div class="thread-list-main">
-        <span class="thread-list-name">${escapeHtml(threadDisplayName(r))}</span>
-        <span class="tag ${r.status}">${r.status.replace(/_/g, ' ')}</span>
-      </div>
-      <div class="meta">@${escapeHtml(r.instagram_username || '')}${r.email ? ` · ${escapeHtml(r.email)}` : ''}</div>
-      <div class="meta">${fmtDate(threadLastActivity(r))}</div>
-    `;
-    item.onclick = () => selectThread(r.id);
-    listRoot.appendChild(item);
-  }
-}
-
-async function selectThread(id) {
-  threadsSelectedId = id;
-  renderThreadsItems(); // refresh the active highlight
-  const r = threadsCreators.find((x) => x.id === id);
-  const head = el('threads-detail-head');
-  head.hidden = false;
-  head.innerHTML = r
-    ? `<div>
-         <a href="${r.instagram_url}" target="_blank" rel="noopener">@${escapeHtml(r.instagram_username || '')}</a>
-         <span class="thread-detail-name">${escapeHtml(threadDisplayName(r))}</span>
-       </div>
-       <div class="meta">${escapeHtml(r.email || 'no email')}</div>`
-    : '';
-  const box = el('threads-detail');
-  box.innerHTML = '<p class="hint" style="margin:0;">Loading conversation…</p>';
-  try {
-    const data = await api(`/api/creators/${id}/thread`);
-    renderThreadInto(box, data);
-  } catch (err) {
-    box.innerHTML = `<p class="hint" style="margin:0;">Couldn't load thread: ${escapeHtml(err.message)}</p>`;
-  }
 }
 
 // --- Per-campaign template picker ----------------------------------------

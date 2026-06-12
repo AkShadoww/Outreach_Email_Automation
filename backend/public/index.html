@@ -73,7 +73,6 @@
             <div class="actions">
               <button id="run-extension-btn" title="Open each profile in Chrome and scrape via the installed extension">Run via Extension</button>
               <button id="send-emails-btn">Send emails</button>
-              <button id="open-threads-btn" class="ghost" title="Read the full email conversation for any creator">Threads</button>
               <button id="open-delegate-btn" class="ghost" title="Replies the AI handed off for a human to answer">Delegate <span id="delegate-count" class="count-badge" hidden>0</span></button>
               <button id="refresh-btn" class="ghost">Refresh</button>
             </div>
@@ -152,28 +151,6 @@
         </div>
         <div class="card">
           <div id="delegate-list"></div>
-        </div>
-      </div>
-
-      <div id="threads-view" hidden>
-        <div class="main-header">
-          <div>
-            <button id="threads-back-btn" class="ghost small" type="button">&larr; Back to campaign</button>
-            <h2 id="threads-title" style="margin: 8px 0 0;">Email Threads</h2>
-          </div>
-          <p class="hint" style="margin: 0; max-width: 52ch;">The full email conversation for every creator in this campaign. Pick a creator on the left to read their thread.</p>
-        </div>
-        <div class="card threads-layout">
-          <div class="threads-list-pane">
-            <input id="threads-search" type="text" placeholder="Search creators by name, @handle or email&hellip;" />
-            <div id="threads-list"></div>
-          </div>
-          <div class="threads-detail-pane">
-            <div id="threads-detail-head" class="threads-detail-head" hidden></div>
-            <div id="threads-detail" class="threads-detail">
-              <p class="hint" style="margin: 0;">Select a creator to view the conversation.</p>
-            </div>
-          </div>
         </div>
       </div>
     </section>
