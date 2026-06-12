@@ -2,6 +2,59 @@
 (function() {
   'use strict';
 
+  // Curated list of common TLDs. Used to detect when an email scrape has
+  // extra words glued onto the TLD with no separator — e.g. an Instagram bio
+  // rendered as "cc jj@33andwest.com<br>ticket" yields a textContent of
+  // "cc jj@33andwest.comticket" (the newline collapses to nothing across
+  // element boundaries). The naive regex greedily grabs "comticket" as the
+  // TLD because \b matches at end-of-string. We trim back to "com".
+  // Lowercase, no leading dot. Mirrors backend/src/services/igScraper.js.
+  const COMMON_TLDS = new Set([
+    'com','net','org','edu','gov','mil','int','arpa',
+    'info','biz','name','pro','mobi','asia','xxx','tel','jobs','aero','coop','museum',
+    'io','co','ai','app','dev','me','tv','cc','ly','to','sh','fm','ws','xyz','one','team',
+    'tech','online','store','site','space','world','cloud','website','press',
+    'live','life','love','news','club','today','company','agency','studio',
+    'group','design','digital','global','media','network','systems','solutions',
+    'services','consulting','business','community','education','center','school',
+    'academy','email','social','art','blog','shop','fashion','finance','health',
+    'marketing','events','photos','travel','tours','hotel','restaurant','cafe',
+    'inc','llc','ltd','foundation','industries','engineering','engineer',
+    'photography','games','movies','music','beauty','vip','rocks','cool','plus',
+    'works','work','careers','market','bar','coffee','wine','pizza',
+    'us','uk','ca','au','nz','de','fr','it','es','nl','be','ch','at','se','no',
+    'fi','dk','pl','cz','pt','ie','gr','tr','ru','ua','ro','hu','bg','hr','rs',
+    'si','sk','ee','lt','lv','is','lu','mt','cy','mk','md','al','ba',
+    'in','jp','cn','kr','hk','tw','sg','my','th','id','vn','ph','pk','bd','lk','np',
+    'br','mx','ar','cl','pe','ve','uy','py','bo','ec','cr','pa','do','gt','sv','hn',
+    'ni','jm','tt','bs','bb','ht','cu','pr',
+    'za','eg','ng','ke','gh','tn','ma','et','zm','zw','sn','ci','ug','rw','tz','mz',
+    'ae','sa','il','ir','iq','jo','kw','lb','om','qa','sy','ye','bh',
+  ]);
+
+  // Trim characters glued onto the TLD with no separator (e.g.
+  // "jj@33andwest.comticket" -> "jj@33andwest.com"). Conservative: only trims
+  // when the matched TLD is longer than realistic (~6 chars) AND a known
+  // shorter TLD prefix exists. Legit obscure TLDs are left alone.
+  function trimAppendedTld(email) {
+    if (!email) return email;
+    const at = email.indexOf('@');
+    if (at < 1) return email;
+    const domain = email.slice(at + 1);
+    const lastDot = domain.lastIndexOf('.');
+    if (lastDot < 1) return email;
+    const tail = domain.slice(lastDot + 1);
+    if (!/^[a-z]+$/.test(tail)) return email;
+    if (COMMON_TLDS.has(tail) || tail.length <= 6) return email;
+    for (let len = Math.min(tail.length - 1, 10); len >= 2; len--) {
+      const cand = tail.slice(0, len);
+      if (COMMON_TLDS.has(cand)) {
+        return email.slice(0, at + 1) + domain.slice(0, lastDot + 1) + cand;
+      }
+    }
+    return email;
+  }
+
   // Listen for requests from popup / background queue. extractProfileData is
   // async (it scrolls to lazy-load the reels grid before reading view counts),
   // so we keep the message channel open by returning true and replying from the
@@ -241,23 +294,27 @@
 
       // Extract email from bio text using regex
       if (!result.email && bioText) {
-        // Common email patterns
+        // Common email patterns. {2,24} caps the TLD so the greedy match
+        // can't run away; trimAppendedTld below handles the no-separator
+        // case where words get glued onto the TLD.
         const emailPatterns = [
-          /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/g,
-          /\b[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9.-]+\s*\.\s*[A-Z|a-z]{2,}\b/g,
-          /\b[A-Za-z0-9._%+-]+\s*\[\s*at\s*\]\s*[A-Za-z0-9.-]+\s*\.\s*[A-Z|a-z]{2,}\b/gi,
-          /\b[A-Za-z0-9._%+-]+\s*\(\s*at\s*\)\s*[A-Za-z0-9.-]+\s*\.\s*[A-Z|a-z]{2,}\b/gi
+          /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,24}\b/g,
+          /\b[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9.-]+\s*\.\s*[A-Z|a-z]{2,24}\b/g,
+          /\b[A-Za-z0-9._%+-]+\s*\[\s*at\s*\]\s*[A-Za-z0-9.-]+\s*\.\s*[A-Z|a-z]{2,24}\b/gi,
+          /\b[A-Za-z0-9._%+-]+\s*\(\s*at\s*\)\s*[A-Za-z0-9.-]+\s*\.\s*[A-Z|a-z]{2,24}\b/gi
         ];
 
         for (const pattern of emailPatterns) {
           const matches = bioText.match(pattern);
           if (matches && matches.length > 0) {
-            // Clean up the email (remove spaces, replace [at] with @)
-            result.email = matches[0]
+            // Clean up the email (whitespace, [at]/(at), lowercase) and trim
+            // any extra word that got concatenated onto the TLD.
+            const cleaned = matches[0]
               .replace(/\s+/g, '')
               .replace(/\[at\]/gi, '@')
               .replace(/\(at\)/gi, '@')
               .toLowerCase();
+            result.email = trimAppendedTld(cleaned);
             break;
           }
         }
@@ -274,9 +331,9 @@
       // Look for email in any visible text on the page (last resort)
       if (!result.email) {
         const allText = document.body.innerText;
-        const emailMatch = allText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/);
+        const emailMatch = allText.match(/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,24}\b/);
         if (emailMatch) {
-          result.email = emailMatch[0].toLowerCase();
+          result.email = trimAppendedTld(emailMatch[0].toLowerCase());
         }
       }
 
