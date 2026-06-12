@@ -17,11 +17,81 @@ const USER_AGENT =
   '(KHTML, like Gecko) Chrome/121.0 Safari/537.36';
 
 const EMAIL_REGEXES = [
-  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/,
-  /\b[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9.-]+\s*\.\s*[A-Za-z]{2,}\b/,
-  /\b[A-Za-z0-9._%+-]+\s*\[\s*at\s*\]\s*[A-Za-z0-9.-]+\s*\.\s*[A-Za-z]{2,}\b/i,
-  /\b[A-Za-z0-9._%+-]+\s*\(\s*at\s*\)\s*[A-Za-z0-9.-]+\s*\.\s*[A-Za-z]{2,}\b/i,
+  /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,24}\b/,
+  /\b[A-Za-z0-9._%+-]+\s*@\s*[A-Za-z0-9.-]+\s*\.\s*[A-Za-z]{2,24}\b/,
+  /\b[A-Za-z0-9._%+-]+\s*\[\s*at\s*\]\s*[A-Za-z0-9.-]+\s*\.\s*[A-Za-z]{2,24}\b/i,
+  /\b[A-Za-z0-9._%+-]+\s*\(\s*at\s*\)\s*[A-Za-z0-9.-]+\s*\.\s*[A-Za-z]{2,24}\b/i,
 ];
+
+// Curated list of common TLDs. We use it to detect when an email scrape has
+// extra words glued onto the TLD with no separator — e.g. an Instagram bio
+// that renders as "cc jj@33andwest.com\nticket" produces a textContent
+// "jj@33andwest.comticket" (the newline collapses to nothing across element
+// boundaries). The naive regex greedily grabs "comticket" as the TLD because
+// \b matches at end-of-string. We use this list to trim back to "com".
+// Lowercase, no leading dot.
+const COMMON_TLDS = new Set([
+  // generic TLDs
+  'com','net','org','edu','gov','mil','int','arpa',
+  'info','biz','name','pro','mobi','asia','xxx','tel','jobs','aero','coop','museum',
+  // popular short newer gTLDs
+  'io','co','ai','app','dev','me','tv','cc','ly','to','sh','fm','ws','xyz','one','team',
+  // newer gTLDs commonly seen in creator bios
+  'tech','online','store','site','space','world','cloud','website','press',
+  'live','life','love','news','club','today','company','agency','studio',
+  'group','design','digital','global','media','network','systems','solutions',
+  'services','consulting','business','community','education','center','school',
+  'academy','email','social','art','blog','shop','fashion','finance','health',
+  'marketing','events','photos','travel','tours','hotel','restaurant','cafe',
+  'inc','llc','ltd','foundation','industries','engineering','engineer',
+  'photography','games','movies','music','beauty','vip','rocks','cool','plus',
+  'works','work','careers','agency','market','bar','coffee','wine','pizza',
+  // country-code TLDs (top ~100)
+  'us','uk','ca','au','nz','de','fr','it','es','nl','be','ch','at','se','no',
+  'fi','dk','pl','cz','pt','ie','gr','tr','ru','ua','ro','hu','bg','hr','rs',
+  'si','sk','ee','lt','lv','is','lu','mt','cy','mk','md','al','ba',
+  'in','jp','cn','kr','hk','tw','sg','my','th','id','vn','ph','pk','bd','lk','np',
+  'br','mx','ar','cl','pe','ve','uy','py','bo','ec','cr','pa','do','gt','sv','hn',
+  'ni','jm','tt','bs','bb','ht','cu','pr',
+  'za','eg','ng','ke','gh','tn','ma','et','zm','zw','sn','ci','ug','rw','tz','mz',
+  'ae','sa','il','ir','iq','jo','kw','lb','om','qa','sy','ye','bh',
+]);
+
+// Trim characters glued onto the TLD with no separator (e.g.
+// "jj@33andwest.comticket" -> "jj@33andwest.com"). Conservative: only trims
+// when the matched "TLD" is longer than a realistic TLD (~6 chars) AND a
+// known shorter TLD prefix exists. Legit obscure TLDs are left alone.
+function trimAppendedTld(email) {
+  if (!email) return email;
+  const at = email.indexOf('@');
+  if (at < 1) return email;
+  const domain = email.slice(at + 1);
+  const lastDot = domain.lastIndexOf('.');
+  if (lastDot < 1) return email;
+  const tail = domain.slice(lastDot + 1);
+  if (!/^[a-z]+$/.test(tail)) return email;
+  if (COMMON_TLDS.has(tail) || tail.length <= 6) return email;
+  // Search descending for the longest known-TLD prefix.
+  for (let len = Math.min(tail.length - 1, 10); len >= 2; len--) {
+    const cand = tail.slice(0, len);
+    if (COMMON_TLDS.has(cand)) {
+      return email.slice(0, at + 1) + domain.slice(0, lastDot + 1) + cand;
+    }
+  }
+  return email;
+}
+
+function cleanEmail(raw) {
+  if (!raw) return null;
+  const cleaned = raw
+    .replace(/\s+/g, '')
+    .replace(/\[at\]/gi, '@')
+    .replace(/\(at\)/gi, '@')
+    .replace(/\[dot\]/gi, '.')
+    .replace(/\(dot\)/gi, '.')
+    .toLowerCase();
+  return trimAppendedTld(cleaned);
+}
 
 function parseUsername(url) {
   try {
@@ -33,16 +103,6 @@ function parseUsername(url) {
   }
 }
 
-function cleanEmail(raw) {
-  if (!raw) return null;
-  return raw
-    .replace(/\s+/g, '')
-    .replace(/\[at\]/gi, '@')
-    .replace(/\(at\)/gi, '@')
-    .replace(/\[dot\]/gi, '.')
-    .replace(/\(dot\)/gi, '.')
-    .toLowerCase();
-}
 
 function findEmail(text) {
   if (!text) return null;
@@ -331,4 +391,12 @@ async function probeProfile(username) {
   return result;
 }
 
-module.exports = { scrapeProfile, parseUsername, probeProfile, igCookieStatus };
+module.exports = {
+  scrapeProfile,
+  parseUsername,
+  probeProfile,
+  igCookieStatus,
+  cleanEmail,
+  findEmail,
+  trimAppendedTld,
+};
