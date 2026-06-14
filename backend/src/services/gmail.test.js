@@ -3,7 +3,22 @@
 // Run with: npm test  (node --test)
 const test = require('node:test');
 const assert = require('node:assert');
-const { encodeSubject } = require('./gmail');
+const { encodeSubject, asReply } = require('./gmail');
+
+test('asReply reuses the thread subject so replies stay in one conversation', () => {
+  // Negotiation/offer emails must carry the outreach subject (as "Re: …") or
+  // Gmail starts a separate thread.
+  assert.strictEqual(
+    asReply("Reve 2.0 Model Campaign - Let's collab!"),
+    "Re: Reve 2.0 Model Campaign - Let's collab!",
+  );
+  // Collapse existing Re:/Fwd: prefixes into a single "Re:".
+  assert.strictEqual(asReply('Re: hello'), 'Re: hello');
+  assert.strictEqual(asReply('RE: FWD: hello'), 'Re: hello');
+  assert.strictEqual(asReply('  fwd:  spaced '), 'Re: spaced');
+  assert.strictEqual(asReply(''), '');
+  assert.strictEqual(asReply(null), '');
+});
 
 test('encodeSubject strips smart punctuation that mojibakes in Subject headers', () => {
   // The reported bug: a Unicode em dash in the subject rendered as "Ã¢Â€Â“".
