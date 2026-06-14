@@ -70,6 +70,37 @@ function buildRawMime({ from, to, subject, htmlBody, textBody, inReplyTo, refere
     .replace(/=+$/, '');
 }
 
+// Normalize a subject into a reply subject: strip any leading Re:/Fwd: and
+// prefix a single "Re: ". Gmail groups a thread by its normalized subject, so
+// replies must carry the thread's subject for the conversation to stay intact.
+function asReply(subject) {
+  const base = String(subject == null ? '' : subject)
+    .replace(/^\s*(?:(?:re|fwd|fw)\s*:\s*)+/i, '')
+    .trim();
+  return base ? `Re: ${base}` : '';
+}
+
+// The subject of an existing Gmail thread (its oldest message = the outreach),
+// used so replies into the thread reuse it. Best-effort: returns null on error.
+async function getThreadSubject(gmail, threadId) {
+  try {
+    const thread = await gmail.users.threads.get({
+      userId: 'me',
+      id: threadId,
+      format: 'metadata',
+      metadataHeaders: ['Subject'],
+    });
+    const messages = thread.data.messages || [];
+    if (!messages.length) return null;
+    const headers = (messages[0].payload && messages[0].payload.headers) || [];
+    const h = headers.find((x) => x.name.toLowerCase() === 'subject');
+    return h ? h.value : null;
+  } catch (err) {
+    console.warn(`[gmail] could not read thread subject for ${threadId}: ${err.message}`);
+    return null;
+  }
+}
+
 async function sendEmail({ to, subject, body, threadId, inReplyTo, references, trackingId }) {
   const auth = await getAuthorizedClient();
   const gmail = google.gmail({ version: 'v1', auth });
@@ -82,10 +113,21 @@ async function sendEmail({ to, subject, body, threadId, inReplyTo, references, t
   const pixelUrl = trackingId ? `${baseUrl}/track/open/${trackingId}.png` : null;
   const rendered = renderRichBody(body);
 
+  // Keep negotiation / follow-up emails inside the outreach conversation: when
+  // sending into an existing thread, reuse that thread's subject (as "Re: …").
+  // Gmail (and the recipient's client) only keep a message in a thread when the
+  // subject matches — a different subject starts a separate conversation, which
+  // is why offers/replies were landing in their own threads.
+  let finalSubject = subject;
+  if (threadId) {
+    const base = await getThreadSubject(gmail, threadId);
+    if (base) finalSubject = asReply(base);
+  }
+
   const raw = buildRawMime({
     from,
     to,
-    subject,
+    subject: finalSubject,
     htmlBody: wrapHtml(rendered.html, pixelUrl),
     textBody: rendered.text,
     inReplyTo,
@@ -277,4 +319,4 @@ async function threadHasReply(threadId) {
   return false;
 }
 
-module.exports = { sendEmail, threadHasReply, getLatestInboundText, getThreadMessages, newTrackingId, encodeSubject };
+module.exports = { sendEmail, threadHasReply, getLatestInboundText, getThreadMessages, newTrackingId, encodeSubject, asReply };
