@@ -849,6 +849,9 @@ el('run-extension-btn').addEventListener('click', async () => {
   const btn = el('run-extension-btn');
   btn.disabled = true;
   el('scrape-cancel-btn').textContent = 'Cancel';
+  // Ask the bridge to (re)announce, so a missed initial handshake doesn't make
+  // the "not detected" check below a false positive.
+  window.postMessage({ type: 'OEA_PING' }, window.location.origin);
   try {
     const rows = await api(
       `/api/creators?campaign_id=${encodeURIComponent(state.selectedCampaignId)}`,
