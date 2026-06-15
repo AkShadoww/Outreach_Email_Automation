@@ -33,7 +33,7 @@ async function refreshAuth() {
     if (s.authorized) {
       node.innerHTML = `Sending as <b>${s.senderEmail}</b> · <a href="/auth/google">re-auth</a>`;
     } else {
-      node.innerHTML = `<a href="/auth/google" style="color:#fca5a5;">⚠ Connect Gmail (${s.senderEmail})</a>`;
+      node.innerHTML = `<a href="/auth/google" style="color:#fff;text-decoration:underline;">⚠ Connect Gmail (${s.senderEmail})</a>`;
     }
   } catch (err) {
     el('auth-status').textContent = `auth status error: ${err.message}`;
