@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Influence Outreach Automator",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Automatically send follow-up emails within Gmail threads",
   "permissions": [
     "storage",
@@ -29,14 +29,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": [
-        "http://localhost/*",
-        "http://localhost:*/*",
-        "http://127.0.0.1/*",
-        "http://127.0.0.1:*/*",
-        "https://*.influence.technology/*",
-        "https://*.up.railway.app/*"
-      ],
+      "matches": ["https://*/*", "http://*/*"],
       "js": ["dashboard-bridge.js"],
       "run_at": "document_idle"
     }

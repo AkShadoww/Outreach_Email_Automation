@@ -3,8 +3,18 @@
 // The dashboard cannot talk to the extension directly. It posts window.message
 // events; this content script forwards them to background.js, and forwards
 // background progress messages back to the page.
+//
+// This script is injected on every http/https page (so it works wherever the
+// dashboard is hosted — Railway, a custom domain, localhost — without per-domain
+// manifest edits). The marker check below keeps it completely inert on any page
+// that isn't the Outreach dashboard.
 (function () {
   'use strict';
+
+  // Only the dashboard has these elements — bail immediately on every other site.
+  const isDashboard =
+    document.getElementById('brand-tree') || document.getElementById('run-extension-btn');
+  if (!isDashboard) return;
 
   const PAGE_TO_BG = {
     OEA_RUN_SCRAPE_QUEUE: 'runScrapeQueue',
@@ -12,13 +22,23 @@
   };
 
   // Announce extension presence so the page can tell whether it's installed.
-  window.postMessage({ type: 'OEA_EXTENSION_READY' }, window.location.origin);
+  function announce() {
+    window.postMessage({ type: 'OEA_EXTENSION_READY' }, window.location.origin);
+  }
+  announce();
 
   window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     if (event.origin !== window.location.origin) return;
     const msg = event.data;
     if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
+
+    // Re-announce on demand. The page may ask at any time (e.g. when the user
+    // clicks "Run via Extension") in case the initial announcement was missed.
+    if (msg.type === 'OEA_PING') {
+      announce();
+      return;
+    }
 
     const action = PAGE_TO_BG[msg.type];
     if (!action) return;
