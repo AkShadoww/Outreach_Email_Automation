@@ -31,6 +31,7 @@ const RATE_LOG_TYPES = [
   'replied',
   'rate_quoted',
   'rate_offer_sent',
+  'rate_counter_requested',
   'rate_accepted',
   'rate_declined',
 ];
@@ -61,6 +62,8 @@ function rateLogEntry(type, detail) {
       const cpm = d.cpm != null ? ` · CPM $${d.cpm}` : '';
       return { text: fee ? `Offer sent — ${fee}${cpm}` : 'Offer sent', tone: 'active' };
     }
+    case 'rate_counter_requested':
+      return { text: 'Asked creator for their counter rate', tone: 'active' };
     case 'rate_accepted':
       return { text: 'Creator accepted ✓', tone: 'success' };
     case 'rate_declined':
@@ -87,6 +90,7 @@ async function attachRateLog(rows) {
     const entry = rateLogEntry(e.type, e.detail);
     if (!entry) continue;
     entry.at = e.created_at;
+    entry.type = e.type;
     if (!byCreator.has(e.creator_id)) byCreator.set(e.creator_id, []);
     byCreator.get(e.creator_id).push(entry);
   }
