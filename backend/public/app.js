@@ -326,12 +326,18 @@ function buildOfferControls(r, onRefresh) {
   const container = document.createElement('div');
   container.className = 'neg-offer';
   const offers = Array.isArray(r.suggested_offers) ? r.suggested_offers : [];
+  // Detect a counter-offer scenario: any prior 'rate_offer_sent' event means
+  // this isn't the first approval — the admin is now setting a counter, not an
+  // initial offer. Label the controls so it's obvious which round they're in.
+  const priorOfferSent = Array.isArray(r.rate_log)
+    && r.rate_log.some((e) => e && e.type === 'rate_offer_sent');
+  const offerNoun = priorOfferSent ? 'counter offer' : 'offer';
   const stage = r.negotiation_status
     ? `<div class="neg-stage">${r.negotiation_status.replace(/_/g, ' ').toLowerCase()}</div>`
     : '';
   const sent = r.negotiation_status === 'AWAITING_DECISION';
   const approvedBadge = r.offer_approved
-    ? `<span class="neg-approved-badge ${sent ? 'sent' : ''}">${sent ? '✓ offer sent' : '✓ approved'}</span>`
+    ? `<span class="neg-approved-badge ${sent ? 'sent' : ''}">${sent ? `✓ ${offerNoun} sent` : '✓ approved'}</span>`
     : '';
   if (!offers.length) {
     container.innerHTML =
@@ -363,8 +369,12 @@ function buildOfferControls(r, onRefresh) {
   const cpmCeil = Math.max(...offers.map((o) => Number(o.cpm_applied) || 0), cpm, 1);
   const cpmMax = Math.max(Math.ceil(cpmCeil * 2), 1);
 
+  const offerNounUcFirst = offerNoun.charAt(0).toUpperCase() + offerNoun.slice(1);
+  const approveLabel = r.offer_approved
+    ? `Re-approve &amp; send ${offerNoun}`
+    : `Approve &amp; send ${offerNoun}`;
   container.innerHTML = `
-    <div class="neg-offer-head">${stage}${approvedBadge}</div>
+    <div class="neg-offer-head"><span class="neg-offer-title">${offerNounUcFirst}</span>${stage}${approvedBadge}</div>
     <select class="neg-offer-select small"></select>
     <div class="neg-offer-basis meta"></div>
     <div class="neg-slider">
@@ -372,7 +382,7 @@ function buildOfferControls(r, onRefresh) {
       <input type="range" class="neg-cpm" min="0" max="${cpmMax}" step="0.5" />
     </div>
     <div class="neg-fee-badge"></div>
-    <button class="small neg-approve">${r.offer_approved ? 'Re-approve &amp; send' : 'Approve &amp; send'}</button>
+    <button class="small neg-approve">${approveLabel}</button>
     <span class="neg-offer-status hint"></span>
   `;
   const sel = container.querySelector('.neg-offer-select');
@@ -450,7 +460,7 @@ function buildOfferControls(r, onRefresh) {
       // so when a send is skipped we say why instead of promising a later send.
       let hold = 1400;
       if (sr && sr.sent) {
-        statusEl.textContent = '✓ Offer email sent.';
+        statusEl.textContent = `✓ ${offerNounUcFirst} email sent.`;
       } else if (sr && sr.error) {
         statusEl.textContent = `Approved, but sending failed: ${sr.error}`;
         hold = 4000;
@@ -458,7 +468,7 @@ function buildOfferControls(r, onRefresh) {
         statusEl.textContent = `Approved, not sent — ${sr.skipped}. Approve again when ready.`;
         hold = 4500;
       } else {
-        statusEl.textContent = '✓ Offer approved.';
+        statusEl.textContent = `✓ ${offerNounUcFirst} approved.`;
       }
       // Brief pause so the status is visible, then let the caller repaint.
       setTimeout(onRefresh, hold);
