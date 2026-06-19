@@ -435,6 +435,38 @@ async function processReply(creatorId) {
   try {
     inbound = await gmail.getLatestInboundText(creator.outreach_thread_id);
   } catch (err) {
+    // Gmail 404 means the thread isn't reachable from the currently authorized
+    // mailbox — typical after a workspace migration: the threadId was minted in
+    // the old mailbox and doesn't resolve in the new one. Stop polling this
+    // thread (drop the linkage) and flag for human review.
+    //
+    // gaxios v6 exposes the HTTP status in several places depending on the
+    // failure path, so check all of them rather than just one.
+    const status =
+      (err && (err.response && err.response.status)) ||
+      (err && err.status) ||
+      (err && err.code);
+    const is404 =
+      status === 404 ||
+      status === '404' ||
+      (err && /requested entity was not found/i.test(err.message || ''));
+    if (is404) {
+      await db.query(
+        `UPDATE creators
+         SET outreach_thread_id = NULL, needs_human = TRUE,
+             delegate_reason = $2, delegated_at = NOW(), updated_at = NOW()
+         WHERE id = $1`,
+        [creator.id, 'Gmail thread is no longer in this mailbox (likely workspace migration); please review manually.'],
+      );
+      await db.query(
+        `INSERT INTO email_events (creator_id, type, detail) VALUES ($1, 'thread_unreachable', $2)`,
+        [creator.id, { threadId: creator.outreach_thread_id, source: 'gmail_404' }],
+      );
+      console.warn(
+        `[negotiation] thread unreachable for creator ${creatorId}; dropped outreach_thread_id and flagged needs_human`,
+      );
+      return { error: 'thread_unreachable' };
+    }
     console.error(`[negotiation] read reply failed for creator ${creatorId}:`, err.message);
     return { error: err.message };
   }
