@@ -502,6 +502,20 @@ tr.thread-row > td { background: var(--surface-2); padding: 0; }
 .thread-subj { font-size: 12px; font-weight: 600; color: var(--ink-2); margin-bottom: 4px; }
 .thread-body { font-size: 13px; color: var(--ink); white-space: pre-wrap; word-break: break-word; }
 
+/* Read-receipt ticks on outbound messages (WhatsApp-style). The negative
+   letter-spacing on double-ticks tightens the two glyphs so they read as a
+   single pair instead of two separate checks. Pushed to the right with
+   margin-left:auto so they sit at the end of the meta row. */
+.ticks {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.ticks.sent       { color: var(--ink-3, #9ca3af); }
+.ticks.delivered  { color: var(--ink-3, #9ca3af); letter-spacing: -3px; padding-right: 3px; }
+.ticks.read       { color: var(--ink, #111);      letter-spacing: -3px; padding-right: 3px; }
+
 /* Count badge on the Delegate button */
 .count-badge {
   display: inline-block;

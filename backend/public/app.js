@@ -488,6 +488,33 @@ function fmtThreadDate(s) {
   return isNaN(d) ? String(s) : d.toLocaleString();
 }
 
+// Read-receipt ticks for outbound messages, WhatsApp-style. Email gives us only
+// two reliable signals — we sent it, and the recipient's mail client fetched
+// the tracking pixel — so the three-state UI uses a 30s threshold to fake the
+// "delivered" middle state:
+//   ✓     "sent"      → sent < 30s ago, no opens yet
+//   ✓✓    "delivered" → sent ≥ 30s ago, no opens yet (assumed in the inbox)
+//   ✓✓    "read"      → pixel fired at least once (rendered in solid black)
+// Outbound messages without tracking (e.g. negotiation emails, which don't
+// embed a pixel today) and inbound messages get no tick.
+const SENT_TO_DELIVERED_MS = 30_000;
+
+function ticksFor(m) {
+  if (m.direction !== 'outbound' || !m.tracking) return '';
+  const opens = m.tracking.opens || 0;
+  if (opens > 0) {
+    const seen = m.tracking.lastOpenAt ? ` · last open ${fmtDate(m.tracking.lastOpenAt)}` : '';
+    const label = opens === 1 ? 'Read once' : `Read ${opens} times`;
+    return `<span class="ticks read" title="${escapeHtml(label + seen)}">&#10003;&#10003;</span>`;
+  }
+  const sentAt = m.tracking.sentAt ? new Date(m.tracking.sentAt) : null;
+  const ageMs = sentAt ? Date.now() - sentAt.getTime() : Infinity;
+  if (ageMs < SENT_TO_DELIVERED_MS) {
+    return '<span class="ticks sent" title="Sent — just now">&#10003;</span>';
+  }
+  return '<span class="ticks delivered" title="Sent — no open detected yet">&#10003;&#10003;</span>';
+}
+
 function renderThreadInto(box, data) {
   const messages = (data && data.messages) || [];
   if (!messages.length) {
@@ -506,9 +533,10 @@ function renderThreadInto(box, data) {
       const subj = m.subject ? `<div class="thread-subj">${escapeHtml(m.subject)}</div>` : '';
       const bodyText = (m.text || '').trim();
       const body = bodyText ? escapeHtml(bodyText) : '<span class="meta">(no text)</span>';
+      const ticks = ticksFor(m);
       return `
         <div class="thread-msg ${side}">
-          <div class="thread-meta"><b>${who}</b><span class="meta">${when}</span></div>
+          <div class="thread-meta"><b>${who}</b><span class="meta">${when}</span>${ticks}</div>
           ${subj}
           <div class="thread-body">${body}</div>
         </div>`;
@@ -557,7 +585,6 @@ async function refreshCreators() {
       <td>${r.first_name || ''} ${r.full_name && r.full_name !== r.first_name ? `<br/><span class="meta">${r.full_name}</span>` : ''}</td>
       <td>${r.email || '<span class="meta">—</span>'}</td>
       <td><span class="tag ${r.status}">${r.status.replace(/_/g, ' ')}</span></td>
-      <td>${r.open_count}${r.last_open_at ? `<br/><span class="meta">${fmtDate(r.last_open_at)}</span>` : ''}</td>
       <td><span class="meta">${fmtDate(lastActivity)}</span></td>
       <td class="neg-views-cell"></td>
       <td class="neg-rate-cell"></td>

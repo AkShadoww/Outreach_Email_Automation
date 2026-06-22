@@ -181,10 +181,65 @@ router.get('/:id/thread', async (req, res, next) => {
     const creator = await db.one(`SELECT * FROM creators WHERE id = $1`, [req.params.id]);
     if (!creator) return res.status(404).json({ error: 'not found' });
 
+    // Pull the per-outbound-message tracking metadata once. We use it to enrich
+    // both the Gmail-thread path and the events-fallback path with read-receipt
+    // info (✓ sent / ✓✓ delivered / ✓✓ read). Mapping: each sent_outreach /
+    // sent_followup event carries the trackingId in `message_id` and (when sent
+    // via the Gmail API path) the Gmail message id in detail.gmailMessageId.
+    // 'opened' events also use `message_id` for the trackingId so we just count
+    // per id. Extension-sent rows may have a null gmailMessageId until locate
+    // succeeds — that's fine, they're matched via the events-fallback path.
+    const sentRows = await db.many(
+      `SELECT message_id, detail, created_at FROM email_events
+       WHERE creator_id = $1
+         AND type IN ('sent_outreach', 'sent_followup')
+         AND message_id IS NOT NULL`,
+      [req.params.id],
+    );
+    const gmailIdToTracking = new Map();
+    const trackingIdToSent = new Map();
+    for (const r of sentRows) {
+      const gmailId = r.detail && r.detail.gmailMessageId;
+      const sentInfo = { trackingId: r.message_id, sentAt: r.created_at };
+      if (gmailId) gmailIdToTracking.set(gmailId, sentInfo);
+      trackingIdToSent.set(r.message_id, sentInfo);
+    }
+    const trackingIds = Array.from(trackingIdToSent.keys());
+    const opensByTracking = new Map();
+    if (trackingIds.length) {
+      const openRows = await db.many(
+        `SELECT message_id, COUNT(*)::int AS opens, MAX(created_at) AS last_open
+         FROM email_events
+         WHERE creator_id = $1 AND type = 'opened' AND message_id = ANY($2::text[])
+         GROUP BY message_id`,
+        [req.params.id, trackingIds],
+      );
+      for (const r of openRows) {
+        opensByTracking.set(r.message_id, { opens: r.opens, lastOpenAt: r.last_open });
+      }
+    }
+    const buildTracking = (sentInfo) => {
+      if (!sentInfo) return null;
+      const o = opensByTracking.get(sentInfo.trackingId);
+      return {
+        trackingId: sentInfo.trackingId,
+        sentAt: sentInfo.sentAt,
+        opens: o ? o.opens : 0,
+        lastOpenAt: o ? o.lastOpenAt : null,
+      };
+    };
+
     if (creator.outreach_thread_id) {
       try {
         const messages = await getThreadMessages(creator.outreach_thread_id);
-        if (messages.length) return res.json({ source: 'gmail', messages });
+        if (messages.length) {
+          for (const m of messages) {
+            if (m.direction === 'outbound' && m.id) {
+              m.tracking = buildTracking(gmailIdToTracking.get(m.id));
+            }
+          }
+          return res.json({ source: 'gmail', messages });
+        }
       } catch (err) {
         console.warn(`[thread] gmail fetch failed for creator ${creator.id}: ${err.message}`);
       }
@@ -195,13 +250,15 @@ router.get('/:id/thread', async (req, res, next) => {
     // they're excluded here (rate_offer_sent would otherwise duplicate the
     // offer email's sent_negotiation event).
     const events = await db.many(
-      `SELECT type, detail, created_at FROM email_events
+      `SELECT type, message_id, detail, created_at FROM email_events
        WHERE creator_id = $1 AND type NOT LIKE 'rate_%' ORDER BY created_at ASC`,
       [req.params.id],
     );
     const messages = events.map((e) => {
       const detail = e.detail || {};
       const outbound = String(e.type).startsWith('sent_');
+      const tracking =
+        outbound && e.message_id ? buildTracking(trackingIdToSent.get(e.message_id)) : null;
       return {
         id: null,
         fromName: outbound ? 'INFLUENCE' : creator.first_name || 'Creator',
@@ -209,6 +266,7 @@ router.get('/:id/thread', async (req, res, next) => {
         subject: detail.subject || EVENT_LABELS[e.type] || e.type,
         direction: outbound ? 'outbound' : 'inbound',
         text: detail.subject ? `(${EVENT_LABELS[e.type] || e.type})` : EVENT_LABELS[e.type] || e.type,
+        tracking,
       };
     });
     res.json({ source: 'events', messages });
