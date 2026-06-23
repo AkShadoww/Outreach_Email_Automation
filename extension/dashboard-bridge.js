@@ -38,7 +38,7 @@
     if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') return;
 
     // Re-announce on demand. The page may ask at any time (e.g. when the user
-    // clicks "Run via Extension") in case the initial announcement was missed.
+    // clicks "Scrape Via Extension") in case the initial announcement was missed.
     if (msg.type === 'OEA_PING') {
       announce();
       return;
