@@ -417,22 +417,25 @@ async function processReply(creatorId) {
   const creator = await loadCreator(creatorId);
   if (!creator) return { skipped: 'no creator' };
 
-  // Reply text and dedup key are written by the /webhook/instantly handler
-  // when Instantly fires a reply_received event. No Gmail polling needed.
+  // Reply text is written by the /webhook/instantly handler when Instantly
+  // fires a reply_received event. No Gmail polling needed.
   const inbound = creator.latest_inbound_text
     ? { text: creator.latest_inbound_text, messageId: creator.instantly_reply_uuid }
     : null;
 
   if (!inbound || !inbound.text) return { skipped: 'no inbound text' };
-  if (inbound.messageId && inbound.messageId === creator.last_negotiation_msg_id) {
-    return { skipped: 'already handled' };
-  }
 
+  // Dedup by consuming the text: clear latest_inbound_text once handled so a
+  // re-run sees nothing. We deliberately do NOT gate on instantly_reply_uuid —
+  // it's a thread handle, stable across replies, so a uuid match would wrongly
+  // skip every follow-up reply (counter-offers, acceptances) in the same thread.
   const markHandled = () =>
-    db.query(`UPDATE creators SET last_negotiation_msg_id = $2, updated_at = NOW() WHERE id = $1`, [
-      creator.id,
-      inbound.messageId || null,
-    ]);
+    db.query(
+      `UPDATE creators
+       SET latest_inbound_text = NULL, last_negotiation_msg_id = $2, updated_at = NOW()
+       WHERE id = $1 AND latest_inbound_text IS NOT DISTINCT FROM $3`,
+      [creator.id, inbound.messageId || null, inbound.text],
+    );
 
   // AI off for this template -> always hand the reply to a human.
   if (!(await aiRepliesEnabledForCreator(creator))) {
