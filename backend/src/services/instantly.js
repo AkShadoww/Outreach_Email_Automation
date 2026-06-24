@@ -8,20 +8,58 @@ function apiKey() {
   return k;
 }
 
+const TIMEOUT_MS = Number(process.env.INSTANTLY_TIMEOUT_MS || 15000);
+const MAX_ATTEMPTS = 3;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
 async function request(method, path, body) {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey()}`,
-    },
-    body: body != null ? JSON.stringify(body) : undefined,
-  });
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    throw new Error(`Instantly ${method} ${path} → ${res.status}: ${text}`);
+  let lastErr;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(`${BASE}${path}`, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${apiKey()}`,
+        },
+        body: body != null ? JSON.stringify(body) : undefined,
+        signal: ctrl.signal,
+      });
+      // Retry transient server errors / rate limits; fail fast on 4xx.
+      if (res.status >= 500 || res.status === 429) {
+        const text = await res.text().catch(() => '');
+        throw Object.assign(new Error(`Instantly ${method} ${path} → ${res.status}: ${text}`), {
+          retryable: true,
+        });
+      }
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`Instantly ${method} ${path} → ${res.status}: ${text}`);
+      }
+      return res.json();
+    } catch (err) {
+      lastErr = err;
+      // AbortError (timeout) and network errors are retryable; explicit 4xx is not.
+      const retryable = err.retryable || err.name === 'AbortError' || err.name === 'TypeError';
+      if (!retryable || attempt === MAX_ATTEMPTS) throw err;
+      await sleep(2 ** attempt * 1000); // 2s, 4s
+    } finally {
+      clearTimeout(timer);
+    }
   }
-  return res.json();
+  throw lastErr;
+}
+
+// Minimal text→HTML so newlines render as line breaks in the HTML part.
+function textToHtml(text) {
+  return String(text)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\r?\n/g, '<br>\n');
 }
 
 // Add a single lead to the outreach campaign. Instantly will send the
@@ -44,7 +82,7 @@ async function replyToEmail({ replyToUuid, subject, body }) {
   return request('POST', '/emails/reply', {
     reply_to_uuid: replyToUuid,
     subject,
-    body: { text: body, html: body },
+    body: { text: body, html: textToHtml(body) },
   });
 }
 

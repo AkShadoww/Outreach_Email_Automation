@@ -46,17 +46,6 @@ CREATE TABLE IF NOT EXISTS email_events (
 );
 CREATE INDEX IF NOT EXISTS idx_email_events_creator_id ON email_events(creator_id);
 
-CREATE TABLE IF NOT EXISTS oauth_tokens (
-  id            SERIAL PRIMARY KEY,
-  email         TEXT NOT NULL UNIQUE,
-  access_token  TEXT,
-  refresh_token TEXT,
-  expiry_date   BIGINT,
-  scope         TEXT,
-  token_type    TEXT,
-  updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
 -- Named follow-up sequences (library). Each step has a delay-from-previous
 -- in hours. The per-step subject/body lives on the campaign, not here, so the
 -- same sequence can be reused across campaigns with different copy.
@@ -157,6 +146,8 @@ CREATE INDEX IF NOT EXISTS idx_creators_needs_human ON creators(needs_human) WHE
 -- the /webhook/instantly handler and consumed by negotiation.processReply().
 ALTER TABLE creators ADD COLUMN IF NOT EXISTS instantly_reply_uuid TEXT;
 ALTER TABLE creators ADD COLUMN IF NOT EXISTS latest_inbound_text  TEXT;
+-- The webhook resolves replies by case-insensitive email; index the expression.
+CREATE INDEX IF NOT EXISTS idx_creators_lower_email ON creators(LOWER(email));
 
 -- Suppression list. Any address in here is skipped by sendOutreach / sendFollowup.
 -- Populated by the /unsubscribe endpoint (RFC 8058 one-click + GET confirmation

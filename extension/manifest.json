@@ -2,15 +2,11 @@
   "manifest_version": 3,
   "name": "Influence Outreach Automator",
   "version": "1.0.8",
-  "description": "Automatically send follow-up emails within Gmail threads",
+  "description": "Influence Outreach: scrape Instagram profiles into the Outreach dashboard.",
   "permissions": [
-    "storage",
-    "alarms",
-    "tabs",
-    "scripting"
+    "tabs"
   ],
   "host_permissions": [
-    "https://mail.google.com/*",
     "https://*/*",
     "http://*/*"
   ],
@@ -18,11 +14,6 @@
     "service_worker": "background.js"
   },
   "content_scripts": [
-    {
-      "matches": ["https://mail.google.com/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    },
     {
       "matches": ["https://www.instagram.com/*"],
       "js": ["instagram-content.js"],

@@ -10,12 +10,16 @@ const router = express.Router();
 function verifySignature(req) {
   const secret = process.env.INSTANTLY_WEBHOOK_SECRET;
   if (!secret) return true; // verification disabled if secret not set
-  const sig = req.headers['x-instantly-signature'] || '';
-  const expected = crypto
-    .createHmac('sha256', secret)
-    .update(JSON.stringify(req.body))
-    .digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
+  // HMAC the raw request bytes (captured in server.js), not a re-serialized
+  // copy of the parsed body — key order/whitespace differences would never match.
+  const raw = req.rawBody || Buffer.from(JSON.stringify(req.body));
+  const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
+  const sig = Buffer.from(String(req.headers['x-instantly-signature'] || ''));
+  const exp = Buffer.from(expected);
+  // timingSafeEqual throws on length mismatch — that's the forged/missing-header
+  // case, so treat it as a failed verification rather than letting it throw.
+  if (sig.length !== exp.length) return false;
+  return crypto.timingSafeEqual(sig, exp);
 }
 
 // Instantly reply_received webhook. Payload shape (v2):
@@ -36,8 +40,13 @@ router.post('/instantly', async (req, res) => {
     const email = lead && lead.email;
     if (!email || !reply_text) return;
 
+    // The same email can exist across campaigns; attribute the reply to the
+    // creator we most recently emailed (deterministic, not arbitrary).
     const creator = await db.one(
-      `SELECT id, status FROM creators WHERE LOWER(email) = LOWER($1) LIMIT 1`,
+      `SELECT id, status FROM creators
+       WHERE LOWER(email) = LOWER($1)
+       ORDER BY outreach_sent_at DESC NULLS LAST
+       LIMIT 1`,
       [email],
     );
     if (!creator) {
