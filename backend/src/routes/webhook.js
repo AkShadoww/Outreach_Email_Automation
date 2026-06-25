@@ -14,10 +14,12 @@ function verifySignature(req) {
   // copy of the parsed body — key order/whitespace differences would never match.
   const raw = req.rawBody || Buffer.from(JSON.stringify(req.body));
   const expected = crypto.createHmac('sha256', secret).update(raw).digest('hex');
-  const sig = Buffer.from(String(req.headers['x-instantly-signature'] || ''));
+  // Instantly sends the signature as "sha256=<hex>" — strip the prefix before comparing.
+  let sigStr = String(req.headers['x-instantly-signature'] || '');
+  if (sigStr.startsWith('sha256=')) sigStr = sigStr.slice(7);
+  const sig = Buffer.from(sigStr);
   const exp = Buffer.from(expected);
-  // timingSafeEqual throws on length mismatch — that's the forged/missing-header
-  // case, so treat it as a failed verification rather than letting it throw.
+  // timingSafeEqual throws on length mismatch — treat as failed verification.
   if (sig.length !== exp.length) return false;
   return crypto.timingSafeEqual(sig, exp);
 }
@@ -42,7 +44,7 @@ router.post('/instantly', async (req, res) => {
 
     // The same email can exist across campaigns; attribute the reply to the
     // creator we most recently emailed (deterministic, not arbitrary).
-    const creator = await db.one(
+    const creator = await db.oneOrNone(
       `SELECT id, status FROM creators
        WHERE LOWER(email) = LOWER($1)
        ORDER BY outreach_sent_at DESC NULLS LAST
