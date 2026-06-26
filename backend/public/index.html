@@ -30,11 +30,7 @@
       </section>
 
       <section class="sidebar-section">
-        <button id="open-templates-btn" class="sidebar-nav-link" type="button">
-          <span>Email Templates</span>
-          <span class="meta">&rarr;</span>
-        </button>
-        <button id="open-guidelines-btn" class="sidebar-nav-link" type="button" style="margin-top: 8px;">
+        <button id="open-guidelines-btn" class="sidebar-nav-link" type="button">
           <span>Guidelines</span>
           <span class="meta">&rarr;</span>
         </button>
@@ -56,16 +52,6 @@
             <button type="submit">Add creators</button>
           </div>
         </form>
-
-        <div id="campaign-template-card" class="card" hidden>
-          <div class="row" style="align-items: center; gap: 8px;">
-            <label for="campaign-template-select" style="font-weight: 600;">Select template:</label>
-            <select id="campaign-template-select"></select>
-            <span id="campaign-template-summary" class="meta"></span>
-            <span style="flex: 1;"></span>
-            <button id="campaign-template-open-btn" type="button" class="ghost small">Edit in Email Templates</button>
-          </div>
-        </div>
 
         <div id="creator-table-wrap" class="card" hidden>
           <div class="card-header">
@@ -115,28 +101,23 @@
         </div>
       </div>
 
-      <div id="templates-view" hidden>
-        <div class="main-header">
-          <h2>Email Templates</h2>
-          <p class="hint" style="margin: 0;">Templates control how the AI handles replies for a campaign &mdash; whether it auto-replies during negotiation. Campaigns pick a template from their &ldquo;Select template:&rdquo; dropdown; the one marked default is used by any campaign that hasn&rsquo;t picked one. The actual outreach and follow-up emails (subject, body, cadence) are configured in Instantly.ai, not here.</p>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <h3>Templates</h3>
-            <div class="actions">
-              <button id="new-template-btn" type="button">+ New template</button>
-            </div>
-          </div>
-          <div id="templates-list"></div>
-        </div>
-      </div>
-
       <div id="guidelines-view" hidden>
         <div class="main-header">
           <h2>Guidelines</h2>
-          <p class="hint" style="margin: 0; max-width: 60ch;">Universal instructions for the AI when it reads creator replies and writes negotiation emails. Added to every AI prompt and override the templates on conflict. (They don&rsquo;t change the fixed outreach/follow-up emails, which aren&rsquo;t AI-written.)</p>
+          <p class="hint" style="margin: 0; max-width: 60ch;">Universal instructions for the AI when it reads creator replies and writes negotiation emails. Added to every AI prompt. (Outreach &amp; follow-up emails are configured in Instantly.ai, not here.)</p>
         </div>
+
+        <div class="card">
+          <div class="row" style="align-items: center; gap: 12px;">
+            <label class="checkbox-label" title="Master kill-switch. When off, every creator reply goes straight to the Delegate window — the AI never auto-replies.">
+              <input id="ai-replies-toggle" type="checkbox" />
+              <b>Auto-reply with AI</b>
+            </label>
+            <span id="ai-replies-status" class="hint"></span>
+          </div>
+          <p class="hint" style="margin: 8px 0 0; max-width: 60ch;">When this is off, every creator reply is routed to the Delegate window for a human to handle. When on, the AI uses the Guidelines below + few-shot examples to draft replies automatically.</p>
+        </div>
+
         <div class="card">
           <label for="guidelines-text" style="font-weight: 600; display: block; margin-bottom: 6px;">Universal prompt</label>
           <textarea id="guidelines-text" rows="16" placeholder="e.g.&#10;- Always stay warm, concise and human.&#10;- Never agree to exclusivity or usage rights without a human.&#10;- Prefer view-based deals; keep CPM within the campaign ceiling.&#10;- If a creator asks anything outside standard deal terms, escalate to a human."></textarea>
@@ -153,7 +134,7 @@
             <button id="delegate-back-btn" class="ghost small" type="button">&larr; Back to campaign</button>
             <h2 id="delegate-title" style="margin: 8px 0 0;">Delegate</h2>
           </div>
-          <p class="hint" style="margin: 0; max-width: 52ch;">Replies the AI handed off &mdash; questions/situations it couldn&rsquo;t confidently handle, plus everything from templates with AI replies turned off. Your reply sends from the same email thread.</p>
+          <p class="hint" style="margin: 0; max-width: 52ch;">Replies the AI handed off &mdash; questions/situations it couldn&rsquo;t confidently handle, plus everything routed here while &ldquo;Auto-reply with AI&rdquo; is off. Your reply sends from the same email thread.</p>
         </div>
         <div class="card">
           <div id="delegate-list"></div>
