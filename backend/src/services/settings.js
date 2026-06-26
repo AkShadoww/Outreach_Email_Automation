@@ -1,11 +1,12 @@
 'use strict';
 
-// Tiny key/value store backed by the app_settings table. Currently holds the
-// universal negotiation "Guidelines" prompt; kept generic for future settings.
+// Tiny key/value store backed by the app_settings table. Holds the universal
+// negotiation "Guidelines" prompt and the global AI-auto-reply kill-switch.
 
 const db = require('../db');
 
 const GUIDELINES_KEY = 'negotiation_guidelines';
+const AI_REPLIES_KEY = 'ai_replies_enabled';
 
 async function getSetting(key) {
   const row = await db.one(`SELECT value FROM app_settings WHERE key = $1`, [key]);
@@ -34,4 +35,30 @@ async function getGuidelines() {
   }
 }
 
-module.exports = { getSetting, setSetting, getGuidelines, GUIDELINES_KEY };
+// Global kill-switch for AI auto-replies. Default TRUE on first boot — the
+// negotiation flow auto-replies unless an admin turns it off in the
+// dashboard. Never throws; a missing table / hiccup degrades open (AI on).
+async function getAiRepliesEnabled() {
+  try {
+    const v = await getSetting(AI_REPLIES_KEY);
+    if (v == null) return true;
+    return v !== false && v !== 'false';
+  } catch (err) {
+    console.error('[settings] getAiRepliesEnabled failed:', err.message);
+    return true;
+  }
+}
+
+async function setAiRepliesEnabled(enabled) {
+  await setSetting(AI_REPLIES_KEY, !!enabled);
+}
+
+module.exports = {
+  getSetting,
+  setSetting,
+  getGuidelines,
+  getAiRepliesEnabled,
+  setAiRepliesEnabled,
+  GUIDELINES_KEY,
+  AI_REPLIES_KEY,
+};

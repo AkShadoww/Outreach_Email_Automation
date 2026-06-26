@@ -3,7 +3,6 @@ const API = '';
 const state = {
   campaigns: [],
   selectedCampaignId: null,
-  templates: [],
 };
 
 async function api(path, options = {}) {
@@ -73,7 +72,6 @@ async function refreshCampaigns() {
 
 function showView(name) {
   el('campaign-view').hidden = name !== 'campaign';
-  el('templates-view').hidden = name !== 'templates';
   el('guidelines-view').hidden = name !== 'guidelines';
   el('delegate-view').hidden = name !== 'delegate';
   closeSidebarOnMobile();
@@ -128,8 +126,6 @@ async function selectCampaign(id) {
   el('campaign-max-cpm').value = c.max_cpm != null ? c.max_cpm : '';
   el('campaign-instantly-id').value = c.instantly_campaign_id || '';
   el('instantly-status').textContent = '';
-  el('campaign-template-card').hidden = false;
-  renderCampaignTemplatePicker(c);
   await refreshCreators();
 }
 
@@ -468,67 +464,6 @@ function buildOfferControls(r, onRefresh) {
   return container;
 }
 
-// --- Per-creator email thread dropdown -----------------------------------
-
-function fmtThreadDate(s) {
-  if (!s) return '';
-  const d = new Date(s);
-  return isNaN(d) ? String(s) : d.toLocaleString();
-}
-
-function renderThreadInto(box, data) {
-  const messages = (data && data.messages) || [];
-  if (!messages.length) {
-    box.innerHTML = '<p class="hint" style="margin:0;">No messages yet.</p>';
-    return;
-  }
-  const note =
-    '<p class="hint" style="margin:0 0 8px;">Activity log (sends, replies and negotiation steps). The full email conversation lives in Instantly.ai.</p>';
-  const items = messages
-    .map((m) => {
-      const side = m.direction === 'outbound' ? 'out' : 'in';
-      const who = escapeHtml(m.fromName || (side === 'out' ? 'INFLUENCE' : 'Creator'));
-      const when = escapeHtml(fmtThreadDate(m.date));
-      const subj = m.subject ? `<div class="thread-subj">${escapeHtml(m.subject)}</div>` : '';
-      const bodyText = (m.text || '').trim();
-      const body = bodyText ? escapeHtml(bodyText) : '<span class="meta">(no text)</span>';
-      return `
-        <div class="thread-msg ${side}">
-          <div class="thread-meta"><b>${who}</b><span class="meta">${when}</span></div>
-          ${subj}
-          <div class="thread-body">${body}</div>
-        </div>`;
-    })
-    .join('');
-  box.innerHTML = note + items;
-}
-
-async function toggleThreadRow(tr, creator, btn) {
-  const existing = tr.nextElementSibling;
-  if (existing && existing.classList.contains('thread-row')) {
-    existing.remove();
-    btn.classList.remove('active');
-    return;
-  }
-  btn.classList.add('active');
-  const row = document.createElement('tr');
-  row.className = 'thread-row';
-  const td = document.createElement('td');
-  td.colSpan = tr.children.length;
-  const box = document.createElement('div');
-  box.className = 'thread-box';
-  box.innerHTML = '<p class="hint" style="margin:0;">Loading conversation…</p>';
-  td.appendChild(box);
-  row.appendChild(td);
-  tr.after(row);
-  try {
-    const data = await api(`/api/creators/${creator.id}/thread`);
-    renderThreadInto(box, data);
-  } catch (err) {
-    box.innerHTML = `<p class="hint" style="margin:0;">Couldn't load thread: ${escapeHtml(err.message)}</p>`;
-  }
-}
-
 async function refreshCreators() {
   if (!state.selectedCampaignId) return;
   const rows = await api(`/api/creators?campaign_id=${encodeURIComponent(state.selectedCampaignId)}`);
@@ -577,13 +512,6 @@ async function refreshCreators() {
           body: JSON.stringify({ email: v || null }),
         }),
     });
-
-    const threadBtn = document.createElement('button');
-    threadBtn.className = 'small ghost thread-toggle';
-    threadBtn.textContent = '💬 Thread';
-    threadBtn.title = 'Show the email conversation';
-    threadBtn.onclick = () => toggleThreadRow(tr, r, threadBtn);
-    actions.appendChild(threadBtn);
 
     if (r.status === 'email_found') {
       const btn = document.createElement('button');
@@ -911,7 +839,7 @@ el('run-extension-btn').addEventListener('click', async () => {
   }
 });
 
-// --- Email Templates -----------------------------------------------------
+// --- HTML escape ---------------------------------------------------------
 
 function escapeHtml(s) {
   return String(s == null ? '' : s)
@@ -921,166 +849,14 @@ function escapeHtml(s) {
     .replace(/"/g, '&quot;');
 }
 
-async function refreshTemplates() {
-  state.templates = await api('/api/templates');
-  renderTemplatesList();
-  // Re-render the campaign view's dropdown if it's currently visible.
-  const c = state.campaigns.find((x) => x.id === state.selectedCampaignId);
-  if (c && !el('campaign-template-card').hidden) renderCampaignTemplatePicker(c);
-}
+// --- Guidelines (universal AI prompt + global AI kill-switch) ------------
 
-function renderTemplatesList() {
-  const root = el('templates-list');
-  root.innerHTML = '';
-  if (!state.templates.length) {
-    root.innerHTML = '<p class="hint">No templates yet. Click "+ New template" to add one.</p>';
-    return;
-  }
-  for (const t of state.templates) root.appendChild(buildTemplateBlock(t));
-}
-
-// Renders one template as a collapsible <details> with the full editor.
-// `template.id` is omitted for unsaved drafts.
-function buildTemplateBlock(template) {
-  const block = document.createElement('details');
-  block.className = 'template-block template-row';
-  if (template.id) block.dataset.templateId = String(template.id);
-  if (!template.id) block.setAttribute('open', '');
-
-  const draft = {
-    name: template.name || '',
-    is_default: !!template.is_default,
-    // AI replies default ON unless explicitly false (matches backend default).
-    ai_replies_enabled: template.ai_replies_enabled !== false,
-  };
-
-  block.innerHTML = `
-    <summary>
-      <span class="template-block-title"></span>
-      <span class="template-block-meta">
-        <span class="badge default" hidden>default</span>
-        <span class="badge ai-off" hidden>AI off</span>
-        <span class="meta steps-summary"></span>
-      </span>
-    </summary>
-    <div class="template-block-body"></div>
-  `;
-  const titleEl = block.querySelector('.template-block-title');
-  const badgeEl = block.querySelector('.badge.default');
-  const aiBadgeEl = block.querySelector('.badge.ai-off');
-  const summaryMeta = block.querySelector('.steps-summary');
-  const body = block.querySelector('.template-block-body');
-
-  function refreshSummary() {
-    titleEl.textContent = draft.name || '(unnamed)';
-    badgeEl.hidden = !draft.is_default;
-    aiBadgeEl.hidden = draft.ai_replies_enabled;
-    summaryMeta.textContent = draft.ai_replies_enabled ? 'AI auto-reply on' : 'AI auto-reply off';
-  }
-
-  body.innerHTML = `
-    <p class="hint">
-      This template controls the AI&rsquo;s reply behaviour for its campaigns. The outreach
-      and follow-up emails themselves (subject, body, cadence) are configured in Instantly.ai.
-    </p>
-    <div class="row" style="gap: 12px; flex-wrap: wrap;">
-      <label style="flex: 1; min-width: 200px;">Template name
-        <input type="text" class="tpl-name" value="${escapeHtml(draft.name)}" placeholder="e.g. Standard outreach" />
-      </label>
-      <label class="checkbox-label" style="align-self: end;">
-        <input type="checkbox" class="tpl-is-default" ${draft.is_default ? 'checked' : ''} />
-        Mark as default
-      </label>
-      <label class="checkbox-label" style="align-self: end;" title="When off, the AI never auto-replies for creators on this template — every reply goes to the campaign's Delegate window.">
-        <input type="checkbox" class="tpl-ai-replies" ${draft.ai_replies_enabled ? 'checked' : ''} />
-        Auto-reply with AI
-      </label>
-    </div>
-
-    <div class="row" style="gap: 8px; margin-top: 16px; justify-content: flex-end; align-items: center;">
-      <span class="hint tpl-status" style="margin-right: auto;"></span>
-      ${template.id ? '<button type="button" class="ghost tpl-delete">Delete</button>' : ''}
-      <button type="button" class="tpl-save">${template.id ? 'Save changes' : 'Create template'}</button>
-    </div>
-  `;
-  body.querySelector('.tpl-name').oninput = (ev) => {
-    draft.name = ev.target.value;
-    refreshSummary();
-  };
-  body.querySelector('.tpl-is-default').onchange = (ev) => {
-    draft.is_default = ev.target.checked;
-    refreshSummary();
-  };
-  body.querySelector('.tpl-ai-replies').onchange = (ev) => {
-    draft.ai_replies_enabled = ev.target.checked;
-    refreshSummary();
-  };
-
-  body.querySelector('.tpl-save').onclick = async (ev) => {
-    ev.preventDefault();
-    const btn = ev.currentTarget;
-    const status = body.querySelector('.tpl-status');
-    if (!draft.name.trim()) { status.textContent = 'name required'; return; }
-    btn.disabled = true;
-    status.textContent = 'Saving…';
-    try {
-      const payload = {
-        name: draft.name.trim(),
-        is_default: draft.is_default,
-        ai_replies_enabled: draft.ai_replies_enabled,
-      };
-      if (template.id) {
-        await api(`/api/templates/${template.id}`, { method: 'PATCH', body: JSON.stringify(payload) });
-      } else {
-        await api('/api/templates', { method: 'POST', body: JSON.stringify(payload) });
-      }
-      await refreshTemplates();
-    } catch (err) {
-      status.textContent = `Failed: ${err.message}`;
-    } finally {
-      btn.disabled = false;
-    }
-  };
-  const delBtn = body.querySelector('.tpl-delete');
-  if (delBtn) {
-    delBtn.onclick = async (ev) => {
-      ev.preventDefault();
-      if (!confirm(`Delete template "${template.name}"? Campaigns using it will fall back to the default.`)) return;
-      try {
-        await api(`/api/templates/${template.id}`, { method: 'DELETE' });
-        await refreshTemplates();
-        await refreshCampaigns();
-      } catch (err) {
-        body.querySelector('.tpl-status').textContent = `Failed: ${err.message}`;
-      }
-    };
-  }
-
-  refreshSummary();
-  return block;
-}
-
-el('new-template-btn').addEventListener('click', () => {
-  const root = el('templates-list');
-  if (root.querySelector('.template-row:not([data-template-id])')) return;
-  const block = buildTemplateBlock({
-    name: '',
-    is_default: false,
-    ai_replies_enabled: true,
-  });
-  root.prepend(block);
-});
-
-el('open-templates-btn').addEventListener('click', () => {
-  showView('templates');
-});
-
-// --- Guidelines (universal AI prompt) ------------------------------------
-
-async function refreshGuidelines() {
+async function refreshSettings() {
   try {
     const s = await api('/api/settings');
     el('guidelines-text').value = s.guidelines || '';
+    el('ai-replies-toggle').checked = s.ai_replies_enabled !== false;
+    el('ai-replies-status').textContent = '';
   } catch (err) {
     el('guidelines-status').textContent = `Failed to load: ${err.message}`;
   }
@@ -1089,7 +865,7 @@ async function refreshGuidelines() {
 el('open-guidelines-btn').addEventListener('click', async () => {
   showView('guidelines');
   el('guidelines-status').textContent = '';
-  await refreshGuidelines();
+  await refreshSettings();
 });
 
 el('save-guidelines-btn').addEventListener('click', async () => {
@@ -1107,6 +883,27 @@ el('save-guidelines-btn').addEventListener('click', async () => {
     status.textContent = `Failed: ${err.message}`;
   } finally {
     btn.disabled = false;
+  }
+});
+
+el('ai-replies-toggle').addEventListener('change', async (ev) => {
+  const enabled = !!ev.target.checked;
+  const status = el('ai-replies-status');
+  const toggle = ev.target;
+  toggle.disabled = true;
+  status.textContent = 'Saving…';
+  try {
+    await api('/api/settings/ai-replies-enabled', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    });
+    status.textContent = enabled ? 'On — AI will auto-reply.' : 'Off — all replies go to Delegate.';
+  } catch (err) {
+    // Roll the checkbox back so the UI matches the server state.
+    toggle.checked = !enabled;
+    status.textContent = `Failed: ${err.message}`;
+  } finally {
+    toggle.disabled = false;
   }
 });
 
@@ -1159,7 +956,7 @@ async function renderDelegateList() {
   updateDelegateBadge(pending.length);
   if (!pending.length) {
     root.innerHTML =
-      '<p class="hint">Nothing needs you right now. Replies the AI hands off (or anything on AI-off templates), plus offers awaiting your approval, will appear here.</p>';
+      '<p class="hint">Nothing needs you right now. Replies the AI hands off (or every reply, while &ldquo;Auto-reply with AI&rdquo; is off), plus offers awaiting your approval, will appear here.</p>';
     return;
   }
   root.innerHTML = '';
@@ -1267,68 +1064,6 @@ function buildDelegateCard(r) {
   return card;
 }
 
-// --- Per-campaign template picker ----------------------------------------
-
-function renderCampaignTemplatePicker(campaign) {
-  const select = el('campaign-template-select');
-  select.innerHTML = '';
-  if (!state.templates.length) {
-    const opt = document.createElement('option');
-    opt.value = '';
-    opt.textContent = 'No templates available';
-    select.appendChild(opt);
-    select.disabled = true;
-    el('campaign-template-summary').textContent = 'Create a template first';
-    return;
-  }
-  select.disabled = false;
-
-  const defaultTpl = state.templates.find((t) => t.is_default);
-  const defaultLabel = defaultTpl ? `Default (${defaultTpl.name})` : 'Default';
-  const noneOpt = document.createElement('option');
-  noneOpt.value = '';
-  noneOpt.textContent = `Use default — ${defaultLabel}`;
-  select.appendChild(noneOpt);
-
-  const aiLabel = (t) => (t && t.ai_replies_enabled !== false ? 'AI auto-reply on' : 'AI auto-reply off');
-
-  for (const t of state.templates) {
-    const opt = document.createElement('option');
-    opt.value = String(t.id);
-    opt.textContent = `${t.name} · ${aiLabel(t)}`;
-    if (campaign.template_id === t.id) opt.selected = true;
-    select.appendChild(opt);
-  }
-
-  const refreshSummary = () => {
-    const picked = select.value
-      ? state.templates.find((t) => t.id === Number(select.value))
-      : defaultTpl;
-    el('campaign-template-summary').textContent = picked ? aiLabel(picked) : '';
-  };
-  refreshSummary();
-
-  select.onchange = async () => {
-    const value = select.value ? Number(select.value) : null;
-    refreshSummary();
-    try {
-      const updated = await api(`/api/campaigns/${encodeURIComponent(campaign.id)}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ template_id: value }),
-      });
-      campaign.template_id = updated.template_id;
-      await refreshCampaigns();
-    } catch (err) {
-      el('campaign-template-summary').textContent = `Failed: ${err.message}`;
-    }
-  };
-}
-
-el('campaign-template-open-btn').addEventListener('click', () => {
-  showView('templates');
-});
-
 (async () => {
-  await refreshTemplates();
   await refreshCampaigns();
 })();

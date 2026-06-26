@@ -1,12 +1,22 @@
 const express = require('express');
-const { getGuidelines, setSetting, GUIDELINES_KEY } = require('../services/settings');
+const {
+  getGuidelines,
+  getAiRepliesEnabled,
+  setAiRepliesEnabled,
+  setSetting,
+  GUIDELINES_KEY,
+} = require('../services/settings');
 
 const router = express.Router();
 
-// Current app-wide settings. Right now just the universal Guidelines prompt.
+// Current app-wide settings: the universal Guidelines prompt and the global
+// AI auto-reply kill-switch.
 router.get('/', async (_req, res, next) => {
   try {
-    res.json({ guidelines: await getGuidelines() });
+    res.json({
+      guidelines: await getGuidelines(),
+      ai_replies_enabled: await getAiRepliesEnabled(),
+    });
   } catch (err) {
     next(err);
   }
@@ -21,6 +31,21 @@ router.put('/guidelines', async (req, res, next) => {
     }
     await setSetting(GUIDELINES_KEY, raw == null ? '' : raw);
     res.json({ guidelines: await getGuidelines() });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// Flip the global AI auto-reply kill-switch. When false, every creator reply
+// goes to the Delegate window instead of getting an auto-generated response.
+router.put('/ai-replies-enabled', async (req, res, next) => {
+  try {
+    const raw = (req.body || {}).enabled;
+    if (typeof raw !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+    await setAiRepliesEnabled(raw);
+    res.json({ ai_replies_enabled: await getAiRepliesEnabled() });
   } catch (err) {
     next(err);
   }

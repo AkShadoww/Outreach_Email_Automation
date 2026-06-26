@@ -13,7 +13,7 @@ const db = require('../db');
 const pricing = require('./pricing');
 const templates = require('./negotiationTemplates');
 const instantly = require('./instantly');
-const { getGuidelines } = require('./settings');
+const { getGuidelines, getAiRepliesEnabled } = require('./settings');
 const replyExamples = require('./replyExamples');
 
 // ── Claude client (lazy; optional dependency) ─────────────────────────────
@@ -386,19 +386,13 @@ async function sendNegotiationEmail(creator, email, kind) {
 
 // ── Delegation (human handoff) ─────────────────────────────────────────────
 
-// Is the AI allowed to auto-reply for this creator? Resolves the creator's
-// active template (campaign template_id, else the default) and reads its
-// ai_replies_enabled flag. Defaults TRUE when no template row matches.
-async function aiRepliesEnabledForCreator(creator) {
-  const row = await db.one(
-    `SELECT COALESCE(et.ai_replies_enabled, TRUE) AS ai
-     FROM campaigns ca
-     LEFT JOIN email_templates et
-       ON et.id = COALESCE(ca.template_id, (SELECT id FROM email_templates WHERE is_default LIMIT 1))
-     WHERE ca.id = $1`,
-    [creator.campaign_id],
-  );
-  return row ? row.ai !== false : true;
+// Is the AI allowed to auto-reply right now? Reads the global kill-switch
+// from app_settings (the "Auto-reply with AI" checkbox on the Guidelines
+// page). Defaults TRUE when the setting hasn't been written yet. The
+// `creator` arg is kept for call-site compatibility but is unused — the
+// switch is global since per-campaign template selection was removed.
+async function aiRepliesEnabledForCreator(_creator) {
+  return await getAiRepliesEnabled();
 }
 
 // Park a reply for a human: flag needs_human and stash the creator's message +
