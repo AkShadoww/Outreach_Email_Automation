@@ -24,23 +24,76 @@ function verifySignature(req) {
   return crypto.timingSafeEqual(sig, exp);
 }
 
-// Instantly reply_received webhook. Payload shape (v2):
-// { event_type, lead: { email }, reply_text, reply_to_uuid, ... }
+// Instantly reply webhook. Instantly's payload field names vary by version and
+// event, so we extract defensively from the known aliases and log the raw shape
+// to make any future mismatch obvious in the Railway logs instead of a silent drop.
+const REPLY_EVENTS = new Set(['reply_received', 'email_reply', 'lead_replied', 'reply']);
+
+function pickEventType(body) {
+  return body.event_type || body.event || body.type || null;
+}
+function pickEmail(body) {
+  return (
+    (body.lead && body.lead.email) ||
+    body.lead_email ||
+    body.email ||
+    body.from_email ||
+    null
+  );
+}
+function pickReplyText(body) {
+  return (
+    body.reply_text ||
+    body.reply_text_snippet ||
+    body.reply_body ||
+    body.text ||
+    (body.reply && (body.reply.text || body.reply.body)) ||
+    null
+  );
+}
+function pickReplyUuid(body) {
+  return (
+    body.reply_to_uuid ||
+    body.reply_email_id ||
+    body.email_id ||
+    body.message_id ||
+    body.thread_id ||
+    null
+  );
+}
+
 router.post('/instantly', async (req, res) => {
   // Respond 200 immediately — Instantly retries on non-2xx and gives only 30s.
   res.json({ ok: true });
 
   try {
+    const body = req.body || {};
+    // Always log that SOMETHING arrived + the event type + payload keys, so a
+    // delivered-but-dropped webhook is visible instead of silent.
+    const eventType = pickEventType(body);
+    console.log(
+      `[webhook/instantly] received: event=${eventType} keys=[${Object.keys(body).join(',')}]`,
+    );
+
     if (!verifySignature(req)) {
       console.warn('[webhook/instantly] signature mismatch — ignoring');
       return;
     }
 
-    const { event_type, lead, reply_text, reply_to_uuid } = req.body || {};
-    if (event_type !== 'reply_received') return;
+    if (!REPLY_EVENTS.has(eventType)) {
+      console.log(`[webhook/instantly] ignoring non-reply event: ${eventType}`);
+      return;
+    }
 
-    const email = lead && lead.email;
-    if (!email || !reply_text) return;
+    const email = pickEmail(body);
+    const reply_text = pickReplyText(body);
+    const reply_to_uuid = pickReplyUuid(body);
+    if (!email || !reply_text) {
+      console.warn(
+        `[webhook/instantly] reply missing fields (email=${!!email} text=${!!reply_text}); raw=${JSON.stringify(body).slice(0, 800)}`,
+      );
+      return;
+    }
 
     // The same email can exist across campaigns; attribute the reply to the
     // creator we most recently emailed (deterministic, not arbitrary).
