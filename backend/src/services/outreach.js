@@ -136,8 +136,10 @@ async function sendOutreach(creatorId) {
       }],
     );
 
+    console.log(`[outreach] creator ${creatorId} added to Instantly campaign ${instantlyCampaignId}`);
     return { ok: true, trackingId };
   } catch (err) {
+    console.error(`[outreach] creator ${creatorId} send failed:`, err.message);
     await db.query(
       `INSERT INTO email_events (creator_id, type, detail)
        VALUES ($1, 'failed', $2)`,
