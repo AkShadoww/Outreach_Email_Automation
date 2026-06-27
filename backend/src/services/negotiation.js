@@ -328,10 +328,21 @@ async function countSentNegotiation(creatorId) {
   return r ? r.n : 0;
 }
 
+// Every negotiation email for a creator shares ONE subject so the whole
+// conversation stays in a single tidy thread: "Paid Partnership with <brand>",
+// matching the outreach subject. Threading is already guaranteed by the
+// reply_to_uuid handle; a uniform subject just keeps the displayed thread clean
+// instead of a different Claude/template subject on each message.
+function threadSubject(creator) {
+  const brand = creator.brand_name || process.env.BRAND_NAME || 'INFLUENCE';
+  return `Paid Partnership with ${brand}`;
+}
+
 async function sendNegotiationEmail(creator, email, kind) {
-  let detail = { kind, subject: email.subject };
+  const subject = threadSubject(creator);
+  let detail = { kind, subject };
   if (isDryRun()) {
-    console.log(`[negotiation][DRY_RUN] -> ${creator.email} (${kind}): ${email.subject}\n${email.body}\n`);
+    console.log(`[negotiation][DRY_RUN] -> ${creator.email} (${kind}): ${subject}\n${email.body}\n`);
     detail.dryRun = true;
   } else {
     if (!creator.instantly_reply_uuid) {
@@ -349,7 +360,7 @@ async function sendNegotiationEmail(creator, email, kind) {
     await instantly.replyToEmail({
       replyToUuid: creator.instantly_reply_uuid,
       eaccount,
-      subject: email.subject,
+      subject,
       body: email.body,
     });
     detail = { ...detail, replyToUuid: creator.instantly_reply_uuid, eaccount };
