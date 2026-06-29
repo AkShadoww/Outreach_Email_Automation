@@ -113,6 +113,10 @@ async function sendOutreach(creatorId) {
       email: to,
       firstName: creator.first_name || '',
       campaignId: instantlyCampaignId,
+      // Populates Instantly's {{companyName}} merge tag with the brand so the
+      // outreach subject ("Paid Partnership with {{companyName}}") renders the
+      // brand and matches the negotiation reply subject (same thread).
+      companyName: creator.brand_name || process.env.BRAND_NAME || '',
     });
     // Log Instantly's response so we can see whether the lead was actually
     // ADDED vs SKIPPED (the call returns 200 even when nothing is enrolled).
