@@ -72,13 +72,19 @@ function textToHtml(text) {
 // and no email ever sent. Our own outreach_sent_at guard already prevents
 // re-adding the same creator, so we want the lead enrolled in THIS campaign
 // even if the address exists elsewhere.
-async function addLeadToCampaign({ email, firstName, campaignId }) {
+async function addLeadToCampaign({ email, firstName, campaignId, companyName }) {
   const id = campaignId || process.env.INSTANTLY_CAMPAIGN_ID;
   if (!id) throw new Error('INSTANTLY_CAMPAIGN_ID is not set');
+  // company_name populates Instantly's {{companyName}} merge tag. Set it to the
+  // brand so subjects/bodies like "Paid Partnership with {{companyName}}" render
+  // the brand — which also makes the outreach subject match the negotiation
+  // reply subject so the whole exchange stays in one thread.
+  const lead = { email, first_name: firstName };
+  if (companyName) lead.company_name = companyName;
   return request('POST', '/leads/add', {
     campaign_id: id,
     skip_if_in_workspace: false,
-    leads: [{ email, first_name: firstName }],
+    leads: [lead],
   });
 }
 
